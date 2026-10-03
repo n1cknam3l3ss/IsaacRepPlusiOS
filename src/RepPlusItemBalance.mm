@@ -1,6 +1,7 @@
 #import "RepPlusItemBalance.h"
 #import "RepPlusVoidPatch.h"
 #import "RepPlusLogger.h"
+#import "RepPlusMemory.h"
 
 #include <cstdint>
 #include <unordered_set>
@@ -23,10 +24,10 @@ constexpr size_t kMaximumCollectibleID = 732;
 static bool g_appliedItemConfigPatches = false;
 static std::unordered_set<uintptr_t> g_seraphimCreditedPlayers;
 
-static void* GetItemConfig(intptr_t slide) {
-    void **appPtr = reinterpret_cast<void **>(slide + kAppManagerGlobalRVA);
-    if (!appPtr || !*appPtr) return nullptr;
-    return reinterpret_cast<void *>((char *)(*appPtr) + kItemConfigOffset);
+static uintptr_t GetItemConfigAddr(intptr_t slide) {
+    uintptr_t appManagerPtr = 0;
+    if (!SafeRead(slide + kAppManagerGlobalRVA, appManagerPtr) || !appManagerPtr) return 0;
+    return appManagerPtr + kItemConfigOffset;
 }
 
 } // namespace
@@ -37,34 +38,46 @@ void RepPlusApplyItemBalancePatches(void) {
     intptr_t slide = 0;
     if (!RepPlusIsSupportedBuild(&slide)) return;
 
-    void *itemConfig = GetItemConfig(slide);
+    uintptr_t itemConfig = GetItemConfigAddr(slide);
     if (!itemConfig) return;
 
-    void **items = *reinterpret_cast<void ***>((char *)itemConfig + 0x0);
-    void **itemsEnd = *reinterpret_cast<void ***>((char *)itemConfig + 0x8);
-    if (!items || !itemsEnd || items >= itemsEnd) return;
+    uintptr_t itemsBegin = 0;
+    uintptr_t itemsEnd = 0;
+    if (!SafeRead(itemConfig + 0x0, itemsBegin) || !itemsBegin) return;
+    if (!SafeRead(itemConfig + 0x8, itemsEnd) || !itemsEnd || itemsEnd <= itemsBegin) return;
 
-    size_t count = itemsEnd - items;
+    size_t count = (itemsEnd - itemsBegin) / sizeof(uintptr_t);
     if (count < 650) return; // Not fully loaded yet
 
+    // Helper to read item pointer
+    auto GetItemPtr = [&](size_t id) -> uintptr_t {
+        if (id >= count) return 0;
+        uintptr_t item = 0;
+        SafeRead(itemsBegin + id * sizeof(uintptr_t), item);
+        return item;
+    };
+
     // 1. Revelation (643): remove +2 soul hearts upon pickup
-    if (643 < count && items[643]) {
-        int32_t *soulHearts = reinterpret_cast<int32_t *>((char *)items[643] + 0x60);
-        *soulHearts = 0;
+    uintptr_t revelation = GetItemPtr(643);
+    if (revelation) {
+        int32_t zero = 0;
+        SafeWrite(revelation + 0x60, zero);
         RepPlusLog(@"Patched Item 643 (Revelation): soulhearts = 0 (Rep+ balance)");
     }
 
     // 2. Mega Bean (351): 6 charges
-    if (351 < count && items[351]) {
-        int32_t *maxCharges = reinterpret_cast<int32_t *>((char *)items[351] + 0x74);
-        *maxCharges = 6;
+    uintptr_t megaBean = GetItemPtr(351);
+    if (megaBean) {
+        int32_t six = 6;
+        SafeWrite(megaBean + 0x74, six);
         RepPlusLog(@"Patched Item 351 (Mega Bean): maxcharges = 6 (Rep+ rework)");
     }
 
     // 3. 2Spooky (554): Quality 2
-    if (554 < count && items[554]) {
-        int32_t *quality = reinterpret_cast<int32_t *>((char *)items[554] + 0xC8);
-        *quality = 2;
+    uintptr_t twoSpooky = GetItemPtr(554);
+    if (twoSpooky) {
+        int32_t two = 2;
+        SafeWrite(twoSpooky + 0xC8, two);
         RepPlusLog(@"Patched Item 554 (2Spooky): quality = 2 (Rep+ buff)");
     }
 
@@ -76,44 +89,52 @@ void RepPlusPlayerBalanceTick(void) {
     intptr_t slide = 0;
     if (!RepPlusIsSupportedBuild(&slide)) return;
 
-    // First ensure ItemConfig is patched
     if (!g_appliedItemConfigPatches) {
         RepPlusApplyItemBalancePatches();
     }
 
-    void **g_GamePtr = reinterpret_cast<void **>(slide + kGameGlobalRVA);
-    if (!g_GamePtr || !*g_GamePtr) return;
+    uintptr_t game = 0;
+    if (!SafeRead(slide + kGameGlobalRVA, game) || !game) return;
 
-    void *game = *g_GamePtr;
-    void *room = *reinterpret_cast<void **>((char *)game + kGameCurrentRoomOffset);
-    if (!room) return;
+    uintptr_t room = 0;
+    if (!SafeRead(game + kGameCurrentRoomOffset, room) || !room) return;
 
-    void **entitiesArray = *reinterpret_cast<void ***>((char *)room + kRoomEntitiesArrayOffset);
-    int32_t count = *reinterpret_cast<int32_t *>((char *)room + kRoomEntitiesCountOffset);
-    if (!entitiesArray || count <= 0 || count > 2048) return;
+    uintptr_t entitiesArrayPtr = 0;
+    int32_t count = 0;
+    if (!SafeRead(room + kRoomEntitiesArrayOffset, entitiesArrayPtr) || !entitiesArrayPtr) return;
+    if (!SafeRead(room + kRoomEntitiesCountOffset, count) || count <= 0 || count > 2048) return;
 
     for (int32_t i = 0; i < count; ++i) {
-        void *entity = entitiesArray[i];
-        if (!entity) continue;
+        uintptr_t entity = 0;
+        if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), entity) || !entity) continue;
 
-        int32_t type = *reinterpret_cast<int32_t *>((char *)entity + 0x38);
+        int32_t type = 0;
+        if (!SafeRead(entity + 0x38, type)) continue;
+
         // Entity_Player is type 1
         if (type == 1) {
-            uintptr_t playerAddr = reinterpret_cast<uintptr_t>(entity);
-            int32_t *collectibles = reinterpret_cast<int32_t *>((char *)entity + kPlayerCollectibleCountsOffset);
-            int32_t *transforms = reinterpret_cast<int32_t *>((char *)entity + kPlayerTransformationCountersOffset);
+            uintptr_t playerAddr = entity;
 
             // Rep+ Seraphim: Item 390 (Seraphim Familiar) contributes to Seraphim transformation (index 3)
-            int32_t seraphimCount = collectibles[390];
-            if (seraphimCount > 0 && g_seraphimCreditedPlayers.find(playerAddr) == g_seraphimCreditedPlayers.end()) {
-                transforms[3] += 1;
-                g_seraphimCreditedPlayers.insert(playerAddr);
-                RepPlusLog(@"Credited Seraphim familiar (390) towards Seraphim transformation for player %p (current: %d/3)",
-                           entity, transforms[3]);
+            int32_t seraphimCount = 0;
+            if (SafeRead(playerAddr + kPlayerCollectibleCountsOffset + 390 * sizeof(int32_t), seraphimCount) &&
+                seraphimCount > 0 &&
+                g_seraphimCreditedPlayers.find(playerAddr) == g_seraphimCreditedPlayers.end()) {
+                
+                int32_t currentProgress = 0;
+                uintptr_t transformSlotAddr = playerAddr + kPlayerTransformationCountersOffset + 3 * sizeof(int32_t);
+                SafeRead(transformSlotAddr, currentProgress);
+                currentProgress += 1;
+                SafeWrite(transformSlotAddr, currentProgress);
 
-                if (transforms[3] >= 3) {
-                    *reinterpret_cast<uint8_t *>((char *)entity + kPlayerCanFlyOffset) = 1;
-                    RepPlusLog(@"Player %p completed Seraphim transformation! Granted flight.", entity);
+                g_seraphimCreditedPlayers.insert(playerAddr);
+                RepPlusLog(@"Credited Seraphim familiar (390) towards Seraphim transformation for player 0x%lx (current: %d/3)",
+                           (unsigned long)playerAddr, currentProgress);
+
+                if (currentProgress >= 3) {
+                    uint8_t canFly = 1;
+                    SafeWrite(playerAddr + kPlayerCanFlyOffset, canFly);
+                    RepPlusLog(@"Player 0x%lx completed Seraphim transformation! Granted flight.", (unsigned long)playerAddr);
                 }
             }
         }

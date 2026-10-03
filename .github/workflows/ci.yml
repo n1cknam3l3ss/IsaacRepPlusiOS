@@ -44,8 +44,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "Isaac Repentance+ iOS v1.0.0"
+          tag_name: v1.0.1
+          name: "Isaac Repentance+ iOS v1.0.1"
           body: |
             ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.0)
 

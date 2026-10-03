@@ -1,6 +1,6 @@
 Package: com.nicknameless.isaacrepplus
 Name: Isaac Repentance+ iOS
-Version: 1.0.0
+Version: 1.0.1
 Architecture: iphoneos-arm64
 Description: Standalone Repentance+ port for The Binding of Isaac on iOS. Guaranteed Void portals after Mega Satan, Mother, The Lamb, and ???, plus Rep+ item balance changes.
 Maintainer: nicknameless

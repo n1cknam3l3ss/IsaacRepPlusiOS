@@ -18,10 +18,7 @@ void RepPlusStart(void) {
 
         RepPlusLog(@"Initializing IsaacRepPlusiOS tweak (slide: 0x%lx)", (unsigned long)slide);
 
-        // 1. Install native hooks if ElleKit / Substrate runtime hooker is available
-        RepPlusInstallVoidHooks();
-
-        // 2. Start repeating timer for guaranteed Void portal and balance tracking
+        // Start repeating timer for guaranteed Void portal and balance tracking
         g_watchdogTimer = [NSTimer scheduledTimerWithTimeInterval:0.15
                                                           repeats:YES
                                                             block:^(NSTimer * _Nonnull timer) {

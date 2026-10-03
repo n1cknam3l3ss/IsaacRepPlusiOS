@@ -1,9 +1,9 @@
 #import "RepPlusVoidPatch.h"
 #import "RepPlusLogger.h"
+#import "RepPlusMemory.h"
 
 #import <mach-o/dyld.h>
 #import <mach-o/loader.h>
-#import <dlfcn.h>
 #include <vector>
 
 namespace {
@@ -30,8 +30,6 @@ constexpr uintptr_t kRoomGetGridIndexRVA = 0x5A18AC;
 constexpr uintptr_t kRoomFindFreeTileRVA = 0x5AB878;
 constexpr uintptr_t kGetDefaultDescRVA = 0x7F1CC0;
 constexpr uintptr_t kRoomSpawnGridEntityRVA = 0x59ABC4;
-constexpr uintptr_t kRoomSpawnClearAwardsRVA = 0x59E380;
-constexpr uintptr_t kBossRewardSpawnerRVA = 0x8907D8;
 
 struct Vector2f {
     float x;
@@ -43,12 +41,6 @@ typedef int32_t (*GetGridIndex_t)(void *room, const Vector2f *pos);
 typedef void (*FindFreeTile_t)(void *room, int32_t *gridIndex);
 typedef void* (*GetDefaultDesc_t)();
 typedef bool (*SpawnGridEntity_t)(void *room, int32_t gridIndex, int32_t type, int32_t varIdx, void *desc, int32_t varData);
-
-typedef void (*SpawnClearAwards_t)(void *room);
-typedef void (*BossRewardSpawner_t)(void *arg0, void *arg1, uint32_t arg2, void *arg3, void *arg4, void *arg5, uint64_t arg6, uint32_t arg7);
-
-static SpawnClearAwards_t g_origSpawnClearAwards = nullptr;
-static BossRewardSpawner_t g_origBossRewardSpawner = nullptr;
 
 static NSString *UUIDForHeader(const mach_header_64 *header) {
     if (!header || header->magic != MH_MAGIC_64) return @"";
@@ -101,58 +93,62 @@ bool RepPlusIsSupportedBuild(intptr_t *outSlide) {
     return match;
 }
 
-static bool HasVoidPortal(void *room, intptr_t slide) {
-    if (!room) return false;
+static bool HasVoidPortal(uintptr_t roomAddr, intptr_t slide) {
+    if (!roomAddr) return false;
     uintptr_t trapDoorVTable = slide + kTrapDoorVTableRVA;
-    void **gridEntities = reinterpret_cast<void **>((char *)room + kRoomGridEntitiesOffset);
-    if (!gridEntities) return false;
 
+    uintptr_t gridEntitiesAddr = roomAddr + kRoomGridEntitiesOffset;
     for (size_t i = 0; i < kRoomGridEntityCount; ++i) {
-        void *ent = gridEntities[i];
-        if (ent) {
-            uintptr_t vtable = *reinterpret_cast<uintptr_t *>(ent);
-            if (vtable == trapDoorVTable) {
-                int32_t varData = *reinterpret_cast<int32_t *>((char *)ent + 0x1C);
-                if (varData == 1) {
-                    return true;
-                }
+        uintptr_t entPtr = 0;
+        if (!SafeRead(gridEntitiesAddr + i * sizeof(uintptr_t), entPtr) || !entPtr) continue;
+
+        uintptr_t vtable = 0;
+        if (!SafeRead(entPtr, vtable)) continue;
+
+        if (vtable == trapDoorVTable) {
+            int32_t varData = 0;
+            if (SafeRead(entPtr + 0x1C, varData) && varData == 1) {
+                return true;
             }
         }
     }
     return false;
 }
 
-static bool IsBossDefeated(void *room) {
-    if (!room) return false;
+static bool IsBossDefeated(uintptr_t roomAddr) {
+    if (!roomAddr) return false;
 
-    // Check entity list for Big Chest (Pickup 5.340) or Trophy (5.370)
-    void **entitiesArray = *reinterpret_cast<void ***>((char *)room + kRoomEntitiesArrayOffset);
-    int32_t count = *reinterpret_cast<int32_t *>((char *)room + kRoomEntitiesCountOffset);
+    uintptr_t entitiesArrayPtr = 0;
+    int32_t count = 0;
+
+    if (!SafeRead(roomAddr + kRoomEntitiesArrayOffset, entitiesArrayPtr) || !entitiesArrayPtr) return false;
+    if (!SafeRead(roomAddr + kRoomEntitiesCountOffset, count) || count <= 0 || count > 2048) return false;
 
     bool foundEndingChest = false;
     bool hasAliveBoss = false;
 
-    if (entitiesArray && count > 0 && count < 2048) {
-        for (int32_t i = 0; i < count; ++i) {
-            void *entity = entitiesArray[i];
-            if (!entity) continue;
+    for (int32_t i = 0; i < count; ++i) {
+        uintptr_t entity = 0;
+        if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), entity) || !entity) continue;
 
-            int32_t type = *reinterpret_cast<int32_t *>((char *)entity + 0x38);
-            int32_t variant = *reinterpret_cast<int32_t *>((char *)entity + 0x3C);
-            uint8_t isDead = *reinterpret_cast<uint8_t *>((char *)entity + 0x1C3);
+        int32_t type = 0;
+        int32_t variant = 0;
+        uint8_t isDead = 0;
 
-            // Pickup (5): Big Chest (340) or Trophy (370)
-            if (type == 5 && (variant == 340 || variant == 370)) {
-                foundEndingChest = true;
-            }
+        if (!SafeRead(entity + 0x38, type)) continue;
+        SafeRead(entity + 0x3C, variant);
+        SafeRead(entity + 0x1C3, isDead);
 
-            // Boss NPC (type >= 10 && < 1000):
-            // Check if active alive enemy
-            if (type >= 10 && type < 1000 && !isDead) {
-                float hp = *reinterpret_cast<float *>((char *)entity + 0x354);
-                if (hp > 0.0f) {
-                    hasAliveBoss = true;
-                }
+        // Pickup (5): Big Chest (340) or Trophy (370)
+        if (type == 5 && (variant == 340 || variant == 370)) {
+            foundEndingChest = true;
+        }
+
+        // Boss NPC (type >= 10 && < 1000):
+        if (type >= 10 && type < 1000 && !isDead) {
+            float hp = 0.0f;
+            if (SafeRead(entity + 0x354, hp) && hp > 0.0f) {
+                hasAliveBoss = true;
             }
         }
     }
@@ -182,11 +178,13 @@ static void SpawnVoidPortal(void *room, intptr_t slide) {
     RepPlusLog(@"Spawned guaranteed Void Portal at tile %d (success: %d)", gridIdx, (int)ok);
 }
 
-static void CheckAndSpawnVoidPortal(void *game, void *room, intptr_t slide) {
-    if (!game || !room) return;
+static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, intptr_t slide) {
+    if (!gameAddr || !roomAddr) return;
 
-    int32_t stage = *reinterpret_cast<int32_t *>((char *)game + 0x0);
-    int32_t stageType = *reinterpret_cast<int32_t *>((char *)game + 0x4);
+    int32_t stage = 0;
+    int32_t stageType = 0;
+    if (!SafeRead(gameAddr + 0x0, stage)) return;
+    if (!SafeRead(gameAddr + 0x4, stageType)) return;
 
     // Eligible boss battles:
     // 1. Mother: Stage 8, StageType 4 (Corpse II)
@@ -202,32 +200,33 @@ static void CheckAndSpawnVoidPortal(void *game, void *room, intptr_t slide) {
     if (!eligibleStage) return;
 
     // Check room type:
-    // In Isaac, RoomDescriptorData + 0x8 has RoomType: 5 is ROOM_BOSS
+    // In Isaac, RoomDescriptorData + 0x8 has RoomType: 5 is ROOM_BOSS, 22 is Mega Satan
     int32_t roomType = 0;
-    void *descriptor = *reinterpret_cast<void **>((char *)room + kRoomDescriptorOffset);
-    if (descriptor) {
-        void *roomData = *reinterpret_cast<void **>((char *)descriptor + kRoomDescriptorDataOffset);
-        if (roomData) {
-            roomType = *reinterpret_cast<int32_t *>((char *)roomData + kRoomConfigTypeOffset);
+    uintptr_t descriptor = 0;
+    if (SafeRead(roomAddr + kRoomDescriptorOffset, descriptor) && descriptor) {
+        uintptr_t roomData = 0;
+        if (SafeRead(descriptor + kRoomDescriptorDataOffset, roomData) && roomData) {
+            SafeRead(roomData + kRoomConfigTypeOffset, roomType);
         }
     }
 
     // In Stage 8 (Corpse II), must be RoomType 5 (Mother)
     if (stage == 8 && roomType != 5) return;
 
-    // In Stage 10 or 11, boss rooms or Mega Satan room
-    // If not boss room or mega satan, skip
+    // In Stage 10 or 11, check for boss room or Mega Satan room
     if ((stage == 10 || stage == 11) && roomType != 5 && roomType != 22) {
         // Double-check if big chest is in the room
-        void **entitiesArray = *reinterpret_cast<void ***>((char *)room + kRoomEntitiesArrayOffset);
-        int32_t count = *reinterpret_cast<int32_t *>((char *)room + kRoomEntitiesCountOffset);
+        uintptr_t entitiesArrayPtr = 0;
+        int32_t count = 0;
         bool hasEndingChest = false;
-        if (entitiesArray && count > 0 && count < 2048) {
+        if (SafeRead(roomAddr + kRoomEntitiesArrayOffset, entitiesArrayPtr) && entitiesArrayPtr &&
+            SafeRead(roomAddr + kRoomEntitiesCountOffset, count) && count > 0 && count < 2048) {
             for (int32_t i = 0; i < count; ++i) {
-                void *e = entitiesArray[i];
-                if (e) {
-                    int32_t t = *reinterpret_cast<int32_t *>((char *)e + 0x38);
-                    int32_t v = *reinterpret_cast<int32_t *>((char *)e + 0x3C);
+                uintptr_t e = 0;
+                if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), e) || !e) continue;
+                int32_t t = 0;
+                int32_t v = 0;
+                if (SafeRead(e + 0x38, t) && SafeRead(e + 0x3C, v)) {
                     if (t == 5 && (v == 340 || v == 370)) {
                         hasEndingChest = true;
                         break;
@@ -239,77 +238,27 @@ static void CheckAndSpawnVoidPortal(void *game, void *room, intptr_t slide) {
     }
 
     // Check if Void Portal is already present
-    if (HasVoidPortal(room, slide)) return;
+    if (HasVoidPortal(roomAddr, slide)) return;
 
     // Check if the boss has been defeated
-    if (!IsBossDefeated(room)) return;
+    if (!IsBossDefeated(roomAddr)) return;
 
     // Conditions verified: spawn guaranteed Void Portal!
     RepPlusLog(@"Guaranteed Void Portal condition met! Stage: %d, StageType: %d, RoomType: %d",
                stage, stageType, roomType);
-    SpawnVoidPortal(room, slide);
+    SpawnVoidPortal(reinterpret_cast<void *>(roomAddr), slide);
 }
 
 void RepPlusVoidWatchdogTick(void) {
     intptr_t slide = 0;
     if (!RepPlusIsSupportedBuild(&slide)) return;
 
-    void **g_GamePtr = reinterpret_cast<void **>(slide + kGameGlobalRVA);
-    if (!g_GamePtr || !*g_GamePtr) return;
+    uintptr_t gamePtrAddr = slide + kGameGlobalRVA;
+    uintptr_t game = 0;
+    if (!SafeRead(gamePtrAddr, game) || !game) return;
 
-    void *game = *g_GamePtr;
-    void *room = *reinterpret_cast<void **>((char *)game + kGameCurrentRoomOffset);
-    if (!room) return;
+    uintptr_t room = 0;
+    if (!SafeRead(game + kGameCurrentRoomOffset, room) || !room) return;
 
     CheckAndSpawnVoidPortal(game, room, slide);
-}
-
-// Hook replacements if dynamic hooking is available
-static void Hooked_SpawnClearAwards(void *room) {
-    if (g_origSpawnClearAwards) {
-        g_origSpawnClearAwards(room);
-    }
-    intptr_t slide = 0;
-    if (RepPlusIsSupportedBuild(&slide)) {
-        void **g_GamePtr = reinterpret_cast<void **>(slide + kGameGlobalRVA);
-        if (g_GamePtr && *g_GamePtr) {
-            CheckAndSpawnVoidPortal(*g_GamePtr, room, slide);
-        }
-    }
-}
-
-static void Hooked_BossRewardSpawner(void *arg0, void *arg1, uint32_t arg2, void *arg3, void *arg4, void *arg5, uint64_t arg6, uint32_t arg7) {
-    if (g_origBossRewardSpawner) {
-        g_origBossRewardSpawner(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
-    }
-    intptr_t slide = 0;
-    if (RepPlusIsSupportedBuild(&slide)) {
-        void **g_GamePtr = reinterpret_cast<void **>(slide + kGameGlobalRVA);
-        if (g_GamePtr && *g_GamePtr) {
-            void *game = *g_GamePtr;
-            void *room = *reinterpret_cast<void **>((char *)game + kGameCurrentRoomOffset);
-            if (room) {
-                CheckAndSpawnVoidPortal(game, room, slide);
-            }
-        }
-    }
-}
-
-void RepPlusInstallVoidHooks(void) {
-    intptr_t slide = 0;
-    if (!RepPlusIsSupportedBuild(&slide)) return;
-
-    typedef void (*MSHookFunction_t)(void *symbol, void *replace, void **result);
-    MSHookFunction_t MSHookFunctionPtr = reinterpret_cast<MSHookFunction_t>(dlsym(RTLD_DEFAULT, "MSHookFunction"));
-    if (MSHookFunctionPtr) {
-        MSHookFunctionPtr(reinterpret_cast<void *>(slide + kRoomSpawnClearAwardsRVA),
-                          reinterpret_cast<void *>(Hooked_SpawnClearAwards),
-                          reinterpret_cast<void **>(&g_origSpawnClearAwards));
-        MSHookFunctionPtr(reinterpret_cast<void *>(slide + kBossRewardSpawnerRVA),
-                          reinterpret_cast<void *>(Hooked_BossRewardSpawner),
-                          reinterpret_cast<void **>(&g_origBossRewardSpawner));
-        RepPlusLog(@"Installed native void hooks on SpawnClearAwards and BossRewardSpawner");
-    } else {
-        RepPlusLog(@"MSHookFunction unavailable; relying on main-thread watchdog timer");
-    }
 }
