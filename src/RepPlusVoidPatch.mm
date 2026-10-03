@@ -194,8 +194,9 @@ static void SpawnVoidPortal(void *room, uintptr_t base) {
     GetDefaultDesc_t GetDefaultDesc = reinterpret_cast<GetDefaultDesc_t>(base + kGetDefaultDescRVA);
     SpawnGridEntity_t SpawnGridEntity = reinterpret_cast<SpawnGridEntity_t>(base + kRoomSpawnGridEntityRVA);
 
-    Vector2f center = GetCenterPos(room);
-    int32_t gridIdx = GetGridIndex(room, &center);
+    Vector2f pos = GetCenterPos(room);
+    pos.y += 80.0f; // 2 tiles down so portal does not overlap the chest
+    int32_t gridIdx = GetGridIndex(room, &pos);
     FindFreeTile(room, &gridIdx);
     void *desc = GetDefaultDesc();
 
@@ -211,7 +212,6 @@ static void SpawnBigChest(uintptr_t gameAddr, void *room, uintptr_t base) {
     GameSpawn_t GameSpawn = reinterpret_cast<GameSpawn_t>(base + kGameSpawnEntityRVA);
 
     Vector2f center = GetCenterPos(room);
-    center.y += 40.0f; // offset slightly below room center so portal and chest do not overlap
     Vector2f zeroVel = {0.0f, 0.0f};
 
     void *chest = GameSpawn(reinterpret_cast<void *>(gameAddr), 5, 340, &center, &zeroVel, nullptr, 0, 1);

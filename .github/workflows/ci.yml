@@ -44,10 +44,13 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.2
-          name: "Isaac Repentance+ iOS v1.0.2"
+          tag_name: v1.0.3
+          name: "Isaac Repentance+ iOS v1.0.3"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.2)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.3)
+
+            ### What's Changed in v1.0.3:
+            - **Void Portal Spawn Positioning**: Shifted the guaranteed Void portal spawn position 2 tiles down (`pos.y += 80.0f`) from room center so it cleanly appears below the Big Chest instead of directly under/overlapping it.
 
             ### What's Fixed in v1.0.2:
             - **LiveContainer Base Address Fix**: Fixed critical address calculation where `slide + RVA` was off by 4GB inside LiveContainer's dynamic library loader. Now resolves `header + RVA` identically in both LiveContainer and native jailbreak environments.
