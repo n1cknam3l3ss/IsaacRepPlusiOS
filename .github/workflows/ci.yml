@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          if ! command -v dpkg-deb >/dev/null 2>&1; then brew install dpkg; fi
+
+      - name: Build Tweak
+        run: make all
+
+      - name: Verify outputs
+        run: |
+          test -f build/IsaacRepPlusiOS.dylib
+          test -f packages/IsaacRepPlusiOS-rootless.deb
+          test -f packages/IsaacRepPlusiOS-LiveContainer.framework.zip
+          test -f dist/IsaacRepPlusiOS.zip
+          otool -L build/IsaacRepPlusiOS.dylib
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: IsaacRepPlusiOS-Build
+          path: |
+            build/IsaacRepPlusiOS.dylib
+            packages/IsaacRepPlusiOS-rootless.deb
+            packages/IsaacRepPlusiOS-LiveContainer.framework.zip
+            dist/IsaacRepPlusiOS.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "Isaac Repentance+ iOS v1.0.0"
+          body: |
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.0)
+
+            Standalone tweak bringing key Repentance+ (v1.9.x) quality-of-life and balance features to iOS:
+            - **Guaranteed Void Portals (100% chance)** after defeating:
+              - **Mega Satan** (Chest / Dark Room)
+              - **Mother** (Corpse II)
+              - **The Lamb** (Dark Room)
+              - **??? / Blue Baby** (Chest)
+            - **Repentance+ Item Balance Adjustments**:
+              - **Revelation** (643): Removed +2 soul hearts upon pickup.
+              - **Mega Bean** (351): Max charges set to 6 (rework balance).
+              - **2Spooky** (554): Upgraded to Quality 2.
+              - **Seraphim Familiar** (390): Automatically contributes to Seraphim transformation progress!
+
+            ### Installation:
+            - **Jailbreak (Dopamine / Sileo / ElleKit)**:
+              Install `IsaacRepPlusiOS-rootless.deb`.
+            - **LiveContainer / Jailed**:
+              Download and import `IsaacRepPlusiOS-LiveContainer.framework.zip` into LiveContainer.
+            - **Sideloading / Direct Injection**:
+              Inject `IsaacRepPlusiOS.dylib` into the decrypted IPA using Azule, Sideloadly, or LiveContainer.
+          files: |
+            build/IsaacRepPlusiOS.dylib
+            packages/IsaacRepPlusiOS-rootless.deb
+            packages/IsaacRepPlusiOS-LiveContainer.framework.zip
+            dist/IsaacRepPlusiOS.zip
+          draft: false
+          prerelease: false
