@@ -44,22 +44,23 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
-          name: "Isaac Repentance+ iOS v1.0.1"
+          tag_name: v1.0.2
+          name: "Isaac Repentance+ iOS v1.0.2"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.0)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.2)
 
-            Standalone tweak bringing key Repentance+ (v1.9.x) quality-of-life and balance features to iOS:
-            - **Guaranteed Void Portals (100% chance)** after defeating:
-              - **Mega Satan** (Chest / Dark Room)
-              - **Mother** (Corpse II)
-              - **The Lamb** (Dark Room)
-              - **??? / Blue Baby** (Chest)
+            ### What's Fixed in v1.0.2:
+            - **LiveContainer Base Address Fix**: Fixed critical address calculation where `slide + RVA` was off by 4GB inside LiveContainer's dynamic library loader. Now resolves `header + RVA` identically in both LiveContainer and native jailbreak environments.
+            - **Guaranteed Void Portals (100% chance)**:
+              - **The Lamb** (Dark Room): Void portal spawns adjacent to the Big Chest upon defeat.
+              - **??? / Blue Baby** (Chest): Void portal spawns adjacent to the Big Chest upon defeat.
+              - **Mother** (Corpse II): Void portal spawns in the boss arena upon defeat.
+              - **Mega Satan** (Chest / Dark Room): Suppresses the abrupt vanilla Ending 16 cutscene kick, spawns the guaranteed Void portal, and spawns the Big Chest so the player can choose either to enter The Void or finish the run via chest!
             - **Repentance+ Item Balance Adjustments**:
-              - **Revelation** (643): Removed +2 soul hearts upon pickup.
-              - **Mega Bean** (351): Max charges set to 6 (rework balance).
+              - **Revelation** (643): `soulhearts` set to 0 (no longer grants +2 soul hearts upon pickup).
+              - **Mega Bean** (351): Max charges set to 6 (Rep+ balance rework).
               - **2Spooky** (554): Upgraded to Quality 2.
-              - **Seraphim Familiar** (390): Automatically contributes to Seraphim transformation progress!
+              - **Seraphim Familiar** (390): Correctly credits +1 towards Seraphim transformation (grants flight at 3/3).
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:

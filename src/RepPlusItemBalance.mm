@@ -24,9 +24,9 @@ constexpr size_t kMaximumCollectibleID = 732;
 static bool g_appliedItemConfigPatches = false;
 static std::unordered_set<uintptr_t> g_seraphimCreditedPlayers;
 
-static uintptr_t GetItemConfigAddr(intptr_t slide) {
+static uintptr_t GetItemConfigAddr(uintptr_t base) {
     uintptr_t appManagerPtr = 0;
-    if (!SafeRead(slide + kAppManagerGlobalRVA, appManagerPtr) || !appManagerPtr) return 0;
+    if (!SafeRead(base + kAppManagerGlobalRVA, appManagerPtr) || !appManagerPtr) return 0;
     return appManagerPtr + kItemConfigOffset;
 }
 
@@ -35,10 +35,10 @@ static uintptr_t GetItemConfigAddr(intptr_t slide) {
 void RepPlusApplyItemBalancePatches(void) {
     if (g_appliedItemConfigPatches) return;
 
-    intptr_t slide = 0;
-    if (!RepPlusIsSupportedBuild(&slide)) return;
+    uintptr_t base = RepPlusGetBaseAddress();
+    if (!base) return;
 
-    uintptr_t itemConfig = GetItemConfigAddr(slide);
+    uintptr_t itemConfig = GetItemConfigAddr(base);
     if (!itemConfig) return;
 
     uintptr_t itemsBegin = 0;
@@ -86,15 +86,15 @@ void RepPlusApplyItemBalancePatches(void) {
 }
 
 void RepPlusPlayerBalanceTick(void) {
-    intptr_t slide = 0;
-    if (!RepPlusIsSupportedBuild(&slide)) return;
+    uintptr_t base = RepPlusGetBaseAddress();
+    if (!base) return;
 
     if (!g_appliedItemConfigPatches) {
         RepPlusApplyItemBalancePatches();
     }
 
     uintptr_t game = 0;
-    if (!SafeRead(slide + kGameGlobalRVA, game) || !game) return;
+    if (!SafeRead(base + kGameGlobalRVA, game) || !game) return;
 
     uintptr_t room = 0;
     if (!SafeRead(game + kGameCurrentRoomOffset, room) || !room) return;

@@ -23,5 +23,15 @@ inline bool SafeWrite(uintptr_t address, const T &val) {
                                 static_cast<vm_address_t>(address),
                                 reinterpret_cast<vm_offset_t>(&val),
                                 sizeof(T));
+    if (kr != KERN_SUCCESS) {
+        vm_size_t pageSize = vm_page_size ? vm_page_size : 16384;
+        vm_address_t page = address & ~(pageSize - 1);
+        vm_size_t protectSize = ((address + sizeof(T) + pageSize - 1) & ~(pageSize - 1)) - page;
+        vm_protect(mach_task_self(), page, protectSize, FALSE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+        kr = vm_write(mach_task_self(),
+                      static_cast<vm_address_t>(address),
+                      reinterpret_cast<vm_offset_t>(&val),
+                      sizeof(T));
+    }
     return (kr == KERN_SUCCESS);
 }

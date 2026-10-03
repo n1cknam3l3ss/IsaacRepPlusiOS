@@ -7,8 +7,11 @@
 extern "C" {
 #endif
 
+/// Resolves the base memory address of Isaac executable/dylib in the process
+uintptr_t RepPlusGetBaseAddress(void);
+
 /// Check if Isaac executable is verified and ready
-bool RepPlusIsSupportedBuild(intptr_t *outSlide);
+bool RepPlusIsSupportedBuild(uintptr_t *outBase);
 
 /// Periodic check called from main thread watchdog
 void RepPlusVoidWatchdogTick(void);

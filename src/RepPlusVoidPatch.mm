@@ -30,6 +30,8 @@ constexpr uintptr_t kRoomGetGridIndexRVA = 0x5A18AC;
 constexpr uintptr_t kRoomFindFreeTileRVA = 0x5AB878;
 constexpr uintptr_t kGetDefaultDescRVA = 0x7F1CC0;
 constexpr uintptr_t kRoomSpawnGridEntityRVA = 0x59ABC4;
+constexpr uintptr_t kGameSpawnEntityRVA = 0x88FCBC;
+constexpr uintptr_t kGetCutsceneEventRVA = 0x6D4CB8;
 
 struct Vector2f {
     float x;
@@ -41,6 +43,8 @@ typedef int32_t (*GetGridIndex_t)(void *room, const Vector2f *pos);
 typedef void (*FindFreeTile_t)(void *room, int32_t *gridIndex);
 typedef void* (*GetDefaultDesc_t)();
 typedef bool (*SpawnGridEntity_t)(void *room, int32_t gridIndex, int32_t type, int32_t varIdx, void *desc, int32_t varData);
+typedef void* (*GameSpawn_t)(void *game, int32_t type, int32_t variant, const Vector2f *pos, const Vector2f *velocity, void *spawner, int32_t subType, uint32_t seed);
+typedef void* (*GetCutsceneEvent_t)(void *game, int32_t eventId, int32_t subId);
 
 static NSString *UUIDForHeader(const mach_header_64 *header) {
     if (!header || header->magic != MH_MAGIC_64) return @"";
@@ -59,13 +63,12 @@ static NSString *UUIDForHeader(const mach_header_64 *header) {
     return @"";
 }
 
-static const mach_header_64 *FindIsaacHeader(intptr_t *slideOut) {
+static const mach_header_64 *FindIsaacHeader(void) {
     uint32_t count = _dyld_image_count();
     for (uint32_t i = 0; i < count; ++i) {
         const mach_header_64 *header = reinterpret_cast<const mach_header_64 *>(_dyld_get_image_header(i));
         NSString *uuid = UUIDForHeader(header);
         if ([uuid caseInsensitiveCompare:[NSString stringWithUTF8String:kSupportedUUID]] == NSOrderedSame) {
-            if (slideOut) *slideOut = _dyld_get_image_vmaddr_slide(i);
             return header;
         }
     }
@@ -73,29 +76,31 @@ static const mach_header_64 *FindIsaacHeader(intptr_t *slideOut) {
     for (uint32_t i = 0; i < count; ++i) {
         const mach_header_64 *header = reinterpret_cast<const mach_header_64 *>(_dyld_get_image_header(i));
         if (header && header->magic == MH_MAGIC_64 && header->filetype == MH_EXECUTE) {
-            if (slideOut) *slideOut = _dyld_get_image_vmaddr_slide(i);
             return header;
         }
     }
-    if (slideOut) *slideOut = 0;
     return nullptr;
 }
 
 } // namespace
 
-bool RepPlusIsSupportedBuild(intptr_t *outSlide) {
-    intptr_t slide = 0;
-    const mach_header_64 *header = FindIsaacHeader(&slide);
+uintptr_t RepPlusGetBaseAddress(void) {
+    const mach_header_64 *header = FindIsaacHeader();
+    return reinterpret_cast<uintptr_t>(header);
+}
+
+bool RepPlusIsSupportedBuild(uintptr_t *outBase) {
+    const mach_header_64 *header = FindIsaacHeader();
     if (!header) return false;
     NSString *uuid = UUIDForHeader(header);
     bool match = ([uuid caseInsensitiveCompare:[NSString stringWithUTF8String:kSupportedUUID]] == NSOrderedSame);
-    if (match && outSlide) *outSlide = slide;
+    if (match && outBase) *outBase = reinterpret_cast<uintptr_t>(header);
     return match;
 }
 
-static bool HasVoidPortal(uintptr_t roomAddr, intptr_t slide) {
-    if (!roomAddr) return false;
-    uintptr_t trapDoorVTable = slide + kTrapDoorVTableRVA;
+static bool HasVoidPortal(uintptr_t roomAddr, uintptr_t base) {
+    if (!roomAddr || !base) return false;
+    uintptr_t trapDoorVTable = base + kTrapDoorVTableRVA;
 
     uintptr_t gridEntitiesAddr = roomAddr + kRoomGridEntitiesOffset;
     for (size_t i = 0; i < kRoomGridEntityCount; ++i) {
@@ -108,6 +113,27 @@ static bool HasVoidPortal(uintptr_t roomAddr, intptr_t slide) {
         if (vtable == trapDoorVTable) {
             int32_t varData = 0;
             if (SafeRead(entPtr + 0x1C, varData) && varData == 1) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool HasBigChest(uintptr_t roomAddr) {
+    if (!roomAddr) return false;
+    uintptr_t entitiesArrayPtr = 0;
+    int32_t count = 0;
+    if (!SafeRead(roomAddr + kRoomEntitiesArrayOffset, entitiesArrayPtr) || !entitiesArrayPtr) return false;
+    if (!SafeRead(roomAddr + kRoomEntitiesCountOffset, count) || count <= 0 || count > 2048) return false;
+
+    for (int32_t i = 0; i < count; ++i) {
+        uintptr_t e = 0;
+        if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), e) || !e) continue;
+        int32_t t = 0;
+        int32_t v = 0;
+        if (SafeRead(e + 0x38, t) && SafeRead(e + 0x3C, v)) {
+            if (t == 5 && (v == 340 || v == 370)) {
                 return true;
             }
         }
@@ -159,14 +185,14 @@ static bool IsBossDefeated(uintptr_t roomAddr) {
     return false;
 }
 
-static void SpawnVoidPortal(void *room, intptr_t slide) {
-    if (!room) return;
+static void SpawnVoidPortal(void *room, uintptr_t base) {
+    if (!room || !base) return;
 
-    GetCenterPos_t GetCenterPos = reinterpret_cast<GetCenterPos_t>(slide + kRoomGetCenterPosRVA);
-    GetGridIndex_t GetGridIndex = reinterpret_cast<GetGridIndex_t>(slide + kRoomGetGridIndexRVA);
-    FindFreeTile_t FindFreeTile = reinterpret_cast<FindFreeTile_t>(slide + kRoomFindFreeTileRVA);
-    GetDefaultDesc_t GetDefaultDesc = reinterpret_cast<GetDefaultDesc_t>(slide + kGetDefaultDescRVA);
-    SpawnGridEntity_t SpawnGridEntity = reinterpret_cast<SpawnGridEntity_t>(slide + kRoomSpawnGridEntityRVA);
+    GetCenterPos_t GetCenterPos = reinterpret_cast<GetCenterPos_t>(base + kRoomGetCenterPosRVA);
+    GetGridIndex_t GetGridIndex = reinterpret_cast<GetGridIndex_t>(base + kRoomGetGridIndexRVA);
+    FindFreeTile_t FindFreeTile = reinterpret_cast<FindFreeTile_t>(base + kRoomFindFreeTileRVA);
+    GetDefaultDesc_t GetDefaultDesc = reinterpret_cast<GetDefaultDesc_t>(base + kGetDefaultDescRVA);
+    SpawnGridEntity_t SpawnGridEntity = reinterpret_cast<SpawnGridEntity_t>(base + kRoomSpawnGridEntityRVA);
 
     Vector2f center = GetCenterPos(room);
     int32_t gridIdx = GetGridIndex(room, &center);
@@ -178,8 +204,37 @@ static void SpawnVoidPortal(void *room, intptr_t slide) {
     RepPlusLog(@"Spawned guaranteed Void Portal at tile %d (success: %d)", gridIdx, (int)ok);
 }
 
-static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, intptr_t slide) {
-    if (!gameAddr || !roomAddr) return;
+static void SpawnBigChest(uintptr_t gameAddr, void *room, uintptr_t base) {
+    if (!gameAddr || !room || !base) return;
+
+    GetCenterPos_t GetCenterPos = reinterpret_cast<GetCenterPos_t>(base + kRoomGetCenterPosRVA);
+    GameSpawn_t GameSpawn = reinterpret_cast<GameSpawn_t>(base + kGameSpawnEntityRVA);
+
+    Vector2f center = GetCenterPos(room);
+    center.y += 40.0f; // offset slightly below room center so portal and chest do not overlap
+    Vector2f zeroVel = {0.0f, 0.0f};
+
+    void *chest = GameSpawn(reinterpret_cast<void *>(gameAddr), 5, 340, &center, &zeroVel, nullptr, 0, 1);
+    RepPlusLog(@"Spawned Big Chest (5.340) in Mega Satan room (ptr: 0x%lx)", (unsigned long)chest);
+}
+
+static void SuppressMegaSatanCutscene(uintptr_t gameAddr, uintptr_t base) {
+    if (!gameAddr || !base) return;
+    GetCutsceneEvent_t GetCutsceneEvent = reinterpret_cast<GetCutsceneEvent_t>(base + kGetCutsceneEventRVA);
+    void *event = GetCutsceneEvent(reinterpret_cast<void *>(gameAddr), -11, -1);
+    if (event) {
+        uintptr_t activeCutscene = 0;
+        SafeRead(reinterpret_cast<uintptr_t>(event) + 0x10, activeCutscene);
+        if (!activeCutscene) {
+            uintptr_t sentinel = 1;
+            SafeWrite(reinterpret_cast<uintptr_t>(event) + 0x10, sentinel);
+            RepPlusLog(@"Suppressed automatic Mega Satan Ending 16 cutscene (player free to enter Void Portal or Big Chest)");
+        }
+    }
+}
+
+static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uintptr_t base) {
+    if (!gameAddr || !roomAddr || !base) return;
 
     int32_t stage = 0;
     int32_t stageType = 0;
@@ -216,49 +271,42 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, intp
     // In Stage 10 or 11, check for boss room or Mega Satan room
     if ((stage == 10 || stage == 11) && roomType != 5 && roomType != 22) {
         // Double-check if big chest is in the room
-        uintptr_t entitiesArrayPtr = 0;
-        int32_t count = 0;
-        bool hasEndingChest = false;
-        if (SafeRead(roomAddr + kRoomEntitiesArrayOffset, entitiesArrayPtr) && entitiesArrayPtr &&
-            SafeRead(roomAddr + kRoomEntitiesCountOffset, count) && count > 0 && count < 2048) {
-            for (int32_t i = 0; i < count; ++i) {
-                uintptr_t e = 0;
-                if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), e) || !e) continue;
-                int32_t t = 0;
-                int32_t v = 0;
-                if (SafeRead(e + 0x38, t) && SafeRead(e + 0x3C, v)) {
-                    if (t == 5 && (v == 340 || v == 370)) {
-                        hasEndingChest = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if (!hasEndingChest) return;
+        if (!HasBigChest(roomAddr)) return;
     }
-
-    // Check if Void Portal is already present
-    if (HasVoidPortal(roomAddr, slide)) return;
 
     // Check if the boss has been defeated
     if (!IsBossDefeated(roomAddr)) return;
 
+    // Mega Satan room handling:
+    if (roomType == 22) {
+        // 1. Suppress the auto-cutscene so player doesn't get kicked out to menu
+        SuppressMegaSatanCutscene(gameAddr, base);
+
+        // 2. Ensure Big Chest is spawned in the room
+        if (!HasBigChest(roomAddr)) {
+            SpawnBigChest(gameAddr, reinterpret_cast<void *>(roomAddr), base);
+        }
+    }
+
+    // Check if Void Portal is already present
+    if (HasVoidPortal(roomAddr, base)) return;
+
     // Conditions verified: spawn guaranteed Void Portal!
     RepPlusLog(@"Guaranteed Void Portal condition met! Stage: %d, StageType: %d, RoomType: %d",
                stage, stageType, roomType);
-    SpawnVoidPortal(reinterpret_cast<void *>(roomAddr), slide);
+    SpawnVoidPortal(reinterpret_cast<void *>(roomAddr), base);
 }
 
 void RepPlusVoidWatchdogTick(void) {
-    intptr_t slide = 0;
-    if (!RepPlusIsSupportedBuild(&slide)) return;
+    uintptr_t base = RepPlusGetBaseAddress();
+    if (!base) return;
 
-    uintptr_t gamePtrAddr = slide + kGameGlobalRVA;
+    uintptr_t gamePtrAddr = base + kGameGlobalRVA;
     uintptr_t game = 0;
     if (!SafeRead(gamePtrAddr, game) || !game) return;
 
     uintptr_t room = 0;
     if (!SafeRead(game + kGameCurrentRoomOffset, room) || !room) return;
 
-    CheckAndSpawnVoidPortal(game, room, slide);
+    CheckAndSpawnVoidPortal(game, room, base);
 }

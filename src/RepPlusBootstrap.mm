@@ -10,13 +10,13 @@ static NSTimer *g_watchdogTimer = nil;
 
 void RepPlusStart(void) {
     dispatch_once(&g_startOnce, ^{
-        intptr_t slide = 0;
-        if (!RepPlusIsSupportedBuild(&slide)) {
+        uintptr_t base = 0;
+        if (!RepPlusIsSupportedBuild(&base)) {
             RepPlusLog(@"Unsupported or non-Isaac executable image detected; skipping Rep+ initialization.");
             return;
         }
 
-        RepPlusLog(@"Initializing IsaacRepPlusiOS tweak (slide: 0x%lx)", (unsigned long)slide);
+        RepPlusLog(@"Initializing IsaacRepPlusiOS tweak (base: 0x%lx)", (unsigned long)base);
 
         // Start repeating timer for guaranteed Void portal and balance tracking
         g_watchdogTimer = [NSTimer scheduledTimerWithTimeInterval:0.15
