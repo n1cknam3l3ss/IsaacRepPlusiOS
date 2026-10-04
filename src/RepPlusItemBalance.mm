@@ -27,6 +27,11 @@
                              itemType:(NSInteger)itemType
                            maxCharges:(NSInteger)maxCharges
                            chargeType:(NSInteger)chargeType;
++ (id)shared;
+- (NSDictionary *)assignments;
+- (void)setAssignments:(NSDictionary *)assignments;
+- (NSDictionary *)collectiblesByTransformation;
+- (void)setCollectiblesByTransformation:(NSDictionary *)dict;
 @end
 
 namespace {
@@ -204,9 +209,11 @@ static bool PatchItemsInConfig(uintptr_t itemConfigAddr, const char *configName)
 }
 
 // -----------------------------------------------------------------------------
-// EID Integration (dynamically synchronizes visual Quality & Charges in EID)
+// EID Integration (dynamically synchronizes visual Quality, Charges & Transformations in EID)
 // -----------------------------------------------------------------------------
 static id (*s_orig_EID_descForPickup)(id, SEL, NSInteger, NSInteger) = nullptr;
+static NSArray *(*s_orig_EID_transformationsForVariantSubtype)(id, SEL, NSInteger, NSInteger) = nullptr;
+static NSArray *(*s_orig_EID_transformationsForCollectible)(id, SEL, NSInteger) = nullptr;
 
 static id RepPlus_EID_descForPickup(id self, SEL _cmd, NSInteger variant, NSInteger subtype) {
     id desc = s_orig_EID_descForPickup ? s_orig_EID_descForPickup(self, _cmd, variant, subtype) : nil;
@@ -256,20 +263,147 @@ static id RepPlus_EID_descForPickup(id self, SEL _cmd, NSInteger variant, NSInte
     return desc;
 }
 
-static void InstallEIDHookIfNeeded(void) {
-    static dispatch_once_t onceToken;
-    Class storeClass = NSClassFromString(@"EIDDescriptionStore");
-    if (!storeClass) return;
-
-    dispatch_once(&onceToken, ^{
-        SEL sel = @selector(descriptionForPickupVariant:subtype:);
-        Method m = class_getInstanceMethod(storeClass, sel);
-        if (m) {
-            s_orig_EID_descForPickup = reinterpret_cast<id (*)(id, SEL, NSInteger, NSInteger)>(method_getImplementation(m));
-            method_setImplementation(m, reinterpret_cast<IMP>(RepPlus_EID_descForPickup));
-            RepPlusLog(@"Installed EIDDescriptionStore hook: Rep+ Quality & Charges now displayed in EID overlay!");
+static NSArray *RepPlus_EID_transformationsForVariantSubtype(id self, SEL _cmd, NSInteger variant, NSInteger subtype) {
+    NSArray *orig = s_orig_EID_transformationsForVariantSubtype ? s_orig_EID_transformationsForVariantSubtype(self, _cmd, variant, subtype) : @[];
+    if (variant == 100 && subtype == 390) {
+        // Collectible 390 (Seraphim familiar): Conjoined (4) + Seraphim (10)
+        NSMutableArray *arr = [orig mutableCopy] ?: [NSMutableArray array];
+        if (![arr containsObject:@4]) {
+            [arr addObject:@4];
         }
-    });
+        if (![arr containsObject:@10]) {
+            [arr addObject:@10];
+        }
+        return [arr copy];
+    }
+    return orig;
+}
+
+static NSArray *RepPlus_EID_transformationsForCollectible(id self, SEL _cmd, NSInteger collectible) {
+    NSArray *orig = s_orig_EID_transformationsForCollectible ? s_orig_EID_transformationsForCollectible(self, _cmd, collectible) : @[];
+    if (collectible == 390) {
+        // Collectible 390 (Seraphim familiar): Conjoined (4) + Seraphim (10)
+        NSMutableArray *arr = [orig mutableCopy] ?: [NSMutableArray array];
+        if (![arr containsObject:@4]) {
+            [arr addObject:@4];
+        }
+        if (![arr containsObject:@10]) {
+            [arr addObject:@10];
+        }
+        return [arr copy];
+    }
+    return orig;
+}
+
+static void PatchEIDTransformationDictionaries(void) {
+    // 1. EIDTransformData shared instance assignments
+    Class transformDataClass = NSClassFromString(@"EIDTransformData");
+    if (transformDataClass && [transformDataClass respondsToSelector:@selector(shared)]) {
+        id dataInstance = [transformDataClass shared];
+        if (dataInstance && [dataInstance respondsToSelector:@selector(assignments)] && [dataInstance respondsToSelector:@selector(setAssignments:)]) {
+            @try {
+                NSDictionary *assignments = [dataInstance assignments];
+                if ([assignments isKindOfClass:[NSDictionary class]]) {
+                    NSArray *curr = assignments[@"100:390"];
+                    if (!curr || ![curr containsObject:@10]) {
+                        NSMutableDictionary *mutableDict = [assignments mutableCopy];
+                        NSMutableArray *arr = [curr mutableCopy] ?: [NSMutableArray array];
+                        if (![arr containsObject:@4]) [arr addObject:@4];
+                        if (![arr containsObject:@10]) [arr addObject:@10];
+                        mutableDict[@"100:390"] = [arr copy];
+                        [dataInstance setAssignments:[mutableDict copy]];
+                        RepPlusLog(@"Patched EIDTransformData assignments for item 390 (Conjoined + Seraphim)");
+                    }
+                }
+            } @catch (...) {}
+        }
+    }
+
+    // 2. EIDTransformationProgress shared instance assignments & collectiblesByTransformation
+    Class progressClass = NSClassFromString(@"EIDTransformationProgress");
+    if (progressClass && [progressClass respondsToSelector:@selector(shared)]) {
+        id progressInstance = [progressClass shared];
+        if (progressInstance) {
+            @try {
+                if ([progressInstance respondsToSelector:@selector(assignments)] && [progressInstance respondsToSelector:@selector(setAssignments:)]) {
+                    NSDictionary *assignments = [progressInstance assignments];
+                    if ([assignments isKindOfClass:[NSDictionary class]]) {
+                        NSArray *curr = assignments[@"100:390"];
+                        if (!curr || ![curr containsObject:@10]) {
+                            NSMutableDictionary *mutableDict = [assignments mutableCopy];
+                            NSMutableArray *arr = [curr mutableCopy] ?: [NSMutableArray array];
+                            if (![arr containsObject:@4]) [arr addObject:@4];
+                            if (![arr containsObject:@10]) [arr addObject:@10];
+                            mutableDict[@"100:390"] = [arr copy];
+                            [progressInstance setAssignments:[mutableDict copy]];
+                            RepPlusLog(@"Patched EIDTransformationProgress assignments for item 390");
+                        }
+                    }
+                }
+
+                if ([progressInstance respondsToSelector:@selector(collectiblesByTransformation)] && [progressInstance respondsToSelector:@selector(setCollectiblesByTransformation:)]) {
+                    NSDictionary *byTrans = [progressInstance collectiblesByTransformation];
+                    if ([byTrans isKindOfClass:[NSDictionary class]]) {
+                        NSArray *seraphimItems = byTrans[@10];
+                        if (seraphimItems && ![seraphimItems containsObject:@390]) {
+                            NSMutableDictionary *mutableByTrans = [byTrans mutableCopy];
+                            NSMutableArray *arr = [seraphimItems mutableCopy];
+                            [arr addObject:@390];
+                            mutableByTrans[@10] = [arr copy];
+                            [progressInstance setCollectiblesByTransformation:[mutableByTrans copy]];
+                            RepPlusLog(@"Patched EIDTransformationProgress collectiblesByTransformation[@10] to include item 390");
+                        }
+                    }
+                }
+            } @catch (...) {}
+        }
+    }
+}
+
+static void InstallEIDHookIfNeeded(void) {
+    static dispatch_once_t onceDescStore;
+    Class storeClass = NSClassFromString(@"EIDDescriptionStore");
+    if (storeClass) {
+        dispatch_once(&onceDescStore, ^{
+            SEL sel = @selector(descriptionForPickupVariant:subtype:);
+            Method m = class_getInstanceMethod(storeClass, sel);
+            if (m) {
+                s_orig_EID_descForPickup = reinterpret_cast<id (*)(id, SEL, NSInteger, NSInteger)>(method_getImplementation(m));
+                method_setImplementation(m, reinterpret_cast<IMP>(RepPlus_EID_descForPickup));
+                RepPlusLog(@"Installed EIDDescriptionStore hook: Rep+ Quality & Charges now displayed in EID overlay!");
+            }
+        });
+    }
+
+    static dispatch_once_t onceTransformData;
+    Class transformDataClass = NSClassFromString(@"EIDTransformData");
+    if (transformDataClass) {
+        dispatch_once(&onceTransformData, ^{
+            SEL sel = @selector(transformationsForVariant:subtype:);
+            Method m = class_getInstanceMethod(transformDataClass, sel);
+            if (m) {
+                s_orig_EID_transformationsForVariantSubtype = reinterpret_cast<NSArray *(*)(id, SEL, NSInteger, NSInteger)>(method_getImplementation(m));
+                method_setImplementation(m, reinterpret_cast<IMP>(RepPlus_EID_transformationsForVariantSubtype));
+                RepPlusLog(@"Installed EIDTransformData hook: Seraphim transformation linked to item 390!");
+            }
+        });
+    }
+
+    static dispatch_once_t onceTransformProgress;
+    Class progressClass = NSClassFromString(@"EIDTransformationProgress");
+    if (progressClass) {
+        dispatch_once(&onceTransformProgress, ^{
+            SEL sel = @selector(transformationsForCollectible:);
+            Method m = class_getInstanceMethod(progressClass, sel);
+            if (m) {
+                s_orig_EID_transformationsForCollectible = reinterpret_cast<NSArray *(*)(id, SEL, NSInteger)>(method_getImplementation(m));
+                method_setImplementation(m, reinterpret_cast<IMP>(RepPlus_EID_transformationsForCollectible));
+                RepPlusLog(@"Installed EIDTransformationProgress hook: Seraphim live progress linked to item 390!");
+            }
+        });
+    }
+
+    PatchEIDTransformationDictionaries();
 }
 
 } // namespace
