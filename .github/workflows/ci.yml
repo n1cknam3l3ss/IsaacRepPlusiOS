@@ -44,26 +44,19 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.3
-          name: "Isaac Repentance+ iOS v1.0.3"
+          tag_name: v1.0.4
+          name: "Isaac Repentance+ iOS v1.0.4"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.3)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.4)
 
-            ### What's Changed in v1.0.3:
-            - **Void Portal Spawn Positioning**: Shifted the guaranteed Void portal spawn position 2 tiles down (`pos.y += 80.0f`) from room center so it cleanly appears below the Big Chest instead of directly under/overlapping it.
-
-            ### What's Fixed in v1.0.2:
-            - **LiveContainer Base Address Fix**: Fixed critical address calculation where `slide + RVA` was off by 4GB inside LiveContainer's dynamic library loader. Now resolves `header + RVA` identically in both LiveContainer and native jailbreak environments.
-            - **Guaranteed Void Portals (100% chance)**:
-              - **The Lamb** (Dark Room): Void portal spawns adjacent to the Big Chest upon defeat.
-              - **??? / Blue Baby** (Chest): Void portal spawns adjacent to the Big Chest upon defeat.
-              - **Mother** (Corpse II): Void portal spawns in the boss arena upon defeat.
-              - **Mega Satan** (Chest / Dark Room): Suppresses the abrupt vanilla Ending 16 cutscene kick, spawns the guaranteed Void portal, and spawns the Big Chest so the player can choose either to enter The Void or finish the run via chest!
-            - **Repentance+ Item Balance Adjustments**:
-              - **Revelation** (643): `soulhearts` set to 0 (no longer grants +2 soul hearts upon pickup).
-              - **Mega Bean** (351): Max charges set to 6 (Rep+ balance rework).
-              - **2Spooky** (554): Upgraded to Quality 2.
-              - **Seraphim Familiar** (390): Correctly credits +1 towards Seraphim transformation (grants flight at 3/3).
+            ### What's Fixed in v1.0.4:
+            - **Repentance ItemConfig Resolution**: Fixed root cause where balance patches were only targeting the Afterbirth+ ItemConfig (`AppManager + 0x32880`) and aborting due to item count. Now resolves and patches the actual Repentance ItemConfig (`*(base + 0xAC2428) + 0x55F30`) as well as the legacy config.
+            - **Revelation (643)**: Successfully removes the +2 soul hearts upon pickup (`soulhearts = 0`).
+            - **Mega Bean (351)**: Sets charges to 6 (`maxcharges = 6`).
+            - **2Spooky (554)**: Sets Quality to 2 (`quality = 2`, `craftquality = 2`).
+            - **Seraphim Familiar (390)**: Fixed Seraphim transformation! Player collectible table now properly detected via `Player + 0x29A0` and native `CheckTransformation` (`base + 0x1A46B8`) is triggered to advance the in-game Seraphim counter and grant flight/costume.
+            - **EID Overlay Synchronization**: Dynamically hooks `EIDDescriptionStore` (when EID is present in LiveContainer) to show Quality 2 for 2Spooky and 6 charges for Mega Bean in the HUD display.
+            - **Additional Rep+ Rebalances**: D12 (2 charges), Breath of Life (4 charges), Dataminer (3 charges), Camo Undies (Q2), Milk! (Q2), Shade (Q2), My Shadow (Q2).
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
