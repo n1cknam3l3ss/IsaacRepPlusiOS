@@ -44,17 +44,19 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.8
-          name: "Isaac Repentance+ iOS v1.0.8"
+          tag_name: v1.0.9
+          name: "Isaac Repentance+ iOS v1.0.9"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.8)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.9)
 
-            ### What's New in v1.0.8:
-            - **Disabled Void Portals in Challenges & Daily Runs**: Added engine-level challenge detection (`Game + 0x1cf438` challenge ID and `Game + 0x1cf4c0` daily challenge flag). Void portals are completely disabled in all challenge runs and daily runs, allowing players to touch the Trophy and complete challenges without unwanted portals.
-            - **Retained All v1.0.7 Improvements**:
+            ### What's Fixed in v1.0.9:
+            - **Fixed Crash on Run Entry (Codesigning Protection Fault)**: Removed in-memory instruction patching of executable `__TEXT` code pages (`PatchNaturalVoidPortals`), which caused a `KERN_PROTECTION_FAILURE` / `CODESIGNING: Invalid Page` crash on iOS (especially inside LiveContainer).
+            - **Non-Invasive Rogue Portal Purge**: Rogue/natural duplicate Void portals are now safely detected and cleaned up via heap grid entity management (`SafeReadBytes` batch scanning + C++ deleting destructor), completely eliminating crashes while keeping 100% clean single-portal generation.
+            - **Performance Optimization**: Scanning of rooms now exits immediately on all regular floors (Basement through Womb non-boss rooms) with zero overhead, and grid entity reads use batch memory copies.
+            - **Retained All Features**:
+              - Complete disabling of Void portals during Challenge runs and Daily runs;
               - Mega Satan & Mother Phase 1 fix (only triggers after Phase 2 is dead);
               - Cinematic chest landing delay (~1.2s after chest drops);
-              - Full suppression and purge of natural/duplicate Void portals;
               - Seraphim + Conjoined in EID with live counter synchronization;
               - Revelation (0 soul hearts), Mega Bean (6 charges), 2Spooky (Quality 2).
 

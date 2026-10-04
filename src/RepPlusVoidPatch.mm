@@ -108,42 +108,17 @@ static uint32_t g_chestDropDelayTicks = 0;
 constexpr uint32_t kChestDropDelayTicks = 8; // ~1.2s delay (8 * 0.15s ticks) matching chest drop landing
 static bool g_spawnedGuaranteedPortal = false;
 
-static void PatchNaturalVoidPortals(uintptr_t base) {
-    if (!base) return;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        // 1. Mega Satan natural 50% portal (0x5a0d98): replace cbnz with b #0x59fdf8
-        uint32_t patch_ms = 0x17fffc18;
-        SafeWrite(base + 0x5a0d98, patch_ms);
-
-        // 2. Blue Baby / The Lamb 20% portal (0x5a089c): replace cbnz with b #0x5a0918
-        uint32_t patch_lamb = 0x1400001f;
-        SafeWrite(base + 0x5a089c, patch_lamb);
-
-        // 3. Isaac / Satan 15% portal (0x5a04dc): replace cbnz with b #0x59fdf8
-        uint32_t patch_isaac = 0x17fffe47;
-        SafeWrite(base + 0x5a04dc, patch_isaac);
-
-        // 4. Other boss portal (0x5a0ed0): replace b.hi with b #0x59fdf8
-        uint32_t patch_other = 0x17fffbc6;
-        SafeWrite(base + 0x5a0ed0, patch_other);
-
-        // 5. Mom's Heart 5% portal (0x5a0100): replace cbnz with b #0x5a0214
-        uint32_t patch_mom = 0x14000045;
-        SafeWrite(base + 0x5a0100, patch_mom);
-
-        RepPlusLog(@"Patched natural Void portal spawn branches in engine memory.");
-    });
-}
-
 static bool HasVoidPortal(uintptr_t roomAddr, uintptr_t base, int32_t *outGridIdx = nullptr) {
     if (!roomAddr || !base) return false;
     uintptr_t trapDoorVTable = base + kTrapDoorVTableRVA;
-
     uintptr_t gridEntitiesAddr = roomAddr + kRoomGridEntitiesOffset;
+
+    uintptr_t gridEntities[kRoomGridEntityCount] = {0};
+    if (!SafeReadBytes(gridEntitiesAddr, gridEntities, sizeof(gridEntities))) return false;
+
     for (size_t i = 0; i < kRoomGridEntityCount; ++i) {
-        uintptr_t entPtr = 0;
-        if (!SafeRead(gridEntitiesAddr + i * sizeof(uintptr_t), entPtr) || !entPtr) continue;
+        uintptr_t entPtr = gridEntities[i];
+        if (!entPtr) continue;
 
         uintptr_t vtable = 0;
         if (!SafeRead(entPtr, vtable)) continue;
@@ -164,9 +139,12 @@ static void RemoveNaturalVoidPortals(uintptr_t roomAddr, uintptr_t base, int32_t
     uintptr_t trapDoorVTable = base + kTrapDoorVTableRVA;
     uintptr_t gridEntitiesAddr = roomAddr + kRoomGridEntitiesOffset;
 
+    uintptr_t gridEntities[kRoomGridEntityCount] = {0};
+    if (!SafeReadBytes(gridEntitiesAddr, gridEntities, sizeof(gridEntities))) return;
+
     for (size_t i = 0; i < kRoomGridEntityCount; ++i) {
-        uintptr_t entPtr = 0;
-        if (!SafeRead(gridEntitiesAddr + i * sizeof(uintptr_t), entPtr) || !entPtr) continue;
+        uintptr_t entPtr = gridEntities[i];
+        if (!entPtr) continue;
 
         uintptr_t vtable = 0;
         if (!SafeRead(entPtr, vtable)) continue;
@@ -329,19 +307,6 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
         g_spawnedGuaranteedPortal = false;
     }
 
-    // Do not spawn Void Portals in Challenges or Daily runs
-    int32_t challengeId = 0;
-    if (SafeRead(gameAddr + kGameChallengeOffset, challengeId) && challengeId != 0) {
-        RemoveNaturalVoidPortals(roomAddr, base, -1);
-        return;
-    }
-
-    int32_t dailyChallenge = 0;
-    if (SafeRead(gameAddr + kGameDailyChallengeOffset, dailyChallenge) && dailyChallenge != 0) {
-        RemoveNaturalVoidPortals(roomAddr, base, -1);
-        return;
-    }
-
     int32_t stage = 0;
     int32_t stageType = 0;
     if (!SafeRead(gameAddr + 0x0, stage)) return;
@@ -373,6 +338,19 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
 
     // In Stage 10 or 11, check for boss room (5) or Mega Satan room (22)
     if ((stage == 10 || stage == 11) && roomType != 5 && roomType != 22) {
+        return;
+    }
+
+    // Do not spawn Void Portals in Challenges or Daily runs
+    int32_t challengeId = 0;
+    if (SafeRead(gameAddr + kGameChallengeOffset, challengeId) && challengeId != 0) {
+        RemoveNaturalVoidPortals(roomAddr, base, -1);
+        return;
+    }
+
+    int32_t dailyChallenge = 0;
+    if (SafeRead(gameAddr + kGameDailyChallengeOffset, dailyChallenge) && dailyChallenge != 0) {
+        RemoveNaturalVoidPortals(roomAddr, base, -1);
         return;
     }
 
@@ -442,9 +420,6 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
 void RepPlusVoidWatchdogTick(void) {
     uintptr_t base = RepPlusGetBaseAddress();
     if (!base) return;
-
-    // Patch natural portal spawn instructions in engine memory
-    PatchNaturalVoidPortals(base);
 
     uintptr_t gamePtrAddr = base + kGameGlobalRVA;
     uintptr_t game = 0;
