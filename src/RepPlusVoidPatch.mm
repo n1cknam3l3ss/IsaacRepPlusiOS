@@ -98,7 +98,43 @@ bool RepPlusIsSupportedBuild(uintptr_t *outBase) {
     return match;
 }
 
-static bool HasVoidPortal(uintptr_t roomAddr, uintptr_t base) {
+static uintptr_t g_currentRoomAddr = 0;
+static bool g_seenMegaSatanPhase2 = false;
+static bool g_seenMotherPhase2 = false;
+static int32_t g_guaranteedPortalGridIdx = -1;
+static uint32_t g_chestDropDelayTicks = 0;
+constexpr uint32_t kChestDropDelayTicks = 8; // ~1.2s delay (8 * 0.15s ticks) matching chest drop landing
+static bool g_spawnedGuaranteedPortal = false;
+
+static void PatchNaturalVoidPortals(uintptr_t base) {
+    if (!base) return;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // 1. Mega Satan natural 50% portal (0x5a0d98): replace cbnz with b #0x59fdf8
+        uint32_t patch_ms = 0x17fffc18;
+        SafeWrite(base + 0x5a0d98, patch_ms);
+
+        // 2. Blue Baby / The Lamb 20% portal (0x5a089c): replace cbnz with b #0x5a0918
+        uint32_t patch_lamb = 0x1400001f;
+        SafeWrite(base + 0x5a089c, patch_lamb);
+
+        // 3. Isaac / Satan 15% portal (0x5a04dc): replace cbnz with b #0x59fdf8
+        uint32_t patch_isaac = 0x17fffe47;
+        SafeWrite(base + 0x5a04dc, patch_isaac);
+
+        // 4. Other boss portal (0x5a0ed0): replace b.hi with b #0x59fdf8
+        uint32_t patch_other = 0x17fffbc6;
+        SafeWrite(base + 0x5a0ed0, patch_other);
+
+        // 5. Mom's Heart 5% portal (0x5a0100): replace cbnz with b #0x5a0214
+        uint32_t patch_mom = 0x14000045;
+        SafeWrite(base + 0x5a0100, patch_mom);
+
+        RepPlusLog(@"Patched natural Void portal spawn branches in engine memory.");
+    });
+}
+
+static bool HasVoidPortal(uintptr_t roomAddr, uintptr_t base, int32_t *outGridIdx = nullptr) {
     if (!roomAddr || !base) return false;
     uintptr_t trapDoorVTable = base + kTrapDoorVTableRVA;
 
@@ -113,6 +149,7 @@ static bool HasVoidPortal(uintptr_t roomAddr, uintptr_t base) {
         if (vtable == trapDoorVTable) {
             int32_t varData = 0;
             if (SafeRead(entPtr + 0x1C, varData) && varData == 1) {
+                if (outGridIdx) *outGridIdx = static_cast<int32_t>(i);
                 return true;
             }
         }
@@ -120,33 +157,43 @@ static bool HasVoidPortal(uintptr_t roomAddr, uintptr_t base) {
     return false;
 }
 
-static bool HasBigChest(uintptr_t roomAddr) {
-    if (!roomAddr) return false;
-    uintptr_t entitiesArrayPtr = 0;
-    int32_t count = 0;
-    if (!SafeRead(roomAddr + kRoomEntitiesArrayOffset, entitiesArrayPtr) || !entitiesArrayPtr) return false;
-    if (!SafeRead(roomAddr + kRoomEntitiesCountOffset, count) || count <= 0 || count > 2048) return false;
+static void RemoveNaturalVoidPortals(uintptr_t roomAddr, uintptr_t base, int32_t allowedGridIdx) {
+    if (!roomAddr || !base) return;
+    uintptr_t trapDoorVTable = base + kTrapDoorVTableRVA;
+    uintptr_t gridEntitiesAddr = roomAddr + kRoomGridEntitiesOffset;
 
-    for (int32_t i = 0; i < count; ++i) {
-        uintptr_t e = 0;
-        if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), e) || !e) continue;
-        int32_t t = 0;
-        int32_t v = 0;
-        if (SafeRead(e + 0x38, t) && SafeRead(e + 0x3C, v)) {
-            if (t == 5 && (v == 340 || v == 370)) {
-                return true;
+    for (size_t i = 0; i < kRoomGridEntityCount; ++i) {
+        uintptr_t entPtr = 0;
+        if (!SafeRead(gridEntitiesAddr + i * sizeof(uintptr_t), entPtr) || !entPtr) continue;
+
+        uintptr_t vtable = 0;
+        if (!SafeRead(entPtr, vtable)) continue;
+
+        if (vtable == trapDoorVTable) {
+            int32_t varData = 0;
+            if (SafeRead(entPtr + 0x1C, varData) && varData == 1) {
+                // If this portal is not our guaranteed portal, destroy and remove it!
+                if (allowedGridIdx < 0 || static_cast<int32_t>(i) != allowedGridIdx) {
+                    uintptr_t dtorAddr = 0;
+                    if (SafeRead(vtable + 8, dtorAddr) && dtorAddr) {
+                        typedef void (*Dtor_t)(void *);
+                        Dtor_t dtor = reinterpret_cast<Dtor_t>(dtorAddr);
+                        @try { dtor(reinterpret_cast<void *>(entPtr)); } @catch (...) {}
+                    }
+                    uintptr_t zero = 0;
+                    SafeWrite(gridEntitiesAddr + i * sizeof(uintptr_t), zero);
+                    RepPlusLog(@"Removed natural/duplicate Void Portal at tile %zu (allowed tile: %d)", i, allowedGridIdx);
+                }
             }
         }
     }
-    return false;
 }
 
-static bool IsBossDefeated(uintptr_t roomAddr) {
+static bool CheckBossAndChestState(uintptr_t roomAddr, int32_t roomType, int32_t stage, int32_t stageType, bool &outHasChest) {
     if (!roomAddr) return false;
 
     uintptr_t entitiesArrayPtr = 0;
     int32_t count = 0;
-
     if (!SafeRead(roomAddr + kRoomEntitiesArrayOffset, entitiesArrayPtr) || !entitiesArrayPtr) return false;
     if (!SafeRead(roomAddr + kRoomEntitiesCountOffset, count) || count <= 0 || count > 2048) return false;
 
@@ -170,7 +217,17 @@ static bool IsBossDefeated(uintptr_t roomAddr) {
             foundEndingChest = true;
         }
 
-        // Boss NPC (type >= 10 && < 1000):
+        // Track Mega Satan: Type 275 is Mega Satan Phase 2
+        if (roomType == 22 && type == 275) {
+            g_seenMegaSatanPhase2 = true;
+        }
+
+        // Track Mother: Type 912, Variant >= 10 is Mother Phase 2
+        if (stage == 8 && stageType == 4 && type == 912 && variant >= 10) {
+            g_seenMotherPhase2 = true;
+        }
+
+        // Check if boss NPC is alive
         if (type >= 10 && type < 1000 && !isDead) {
             float hp = 0.0f;
             if (SafeRead(entity + 0x354, hp) && hp > 0.0f) {
@@ -179,14 +236,33 @@ static bool IsBossDefeated(uintptr_t roomAddr) {
         }
     }
 
+    outHasChest = foundEndingChest;
+
+    // Mega Satan room (roomType 22):
+    // Fight is NEVER over during Phase 1. Must have reached Phase 2 and defeated it!
+    if (roomType == 22) {
+        if (!g_seenMegaSatanPhase2) return false;
+        if (hasAliveBoss) return false;
+        return true;
+    }
+
+    // Mother room (Corpse II):
+    // Fight is NEVER over during Phase 1. Must have reached Phase 2 and defeated it (or trophy present)!
+    if (stage == 8 && stageType == 4) {
+        if (!g_seenMotherPhase2 && !foundEndingChest) return false;
+        if (hasAliveBoss) return false;
+        return true;
+    }
+
+    // Blue Baby (Chest) / The Lamb (Dark Room):
     if (foundEndingChest) return true;
-    if (!hasAliveBoss && count >= 0) return true;
+    if (!hasAliveBoss) return true;
 
     return false;
 }
 
-static void SpawnVoidPortal(void *room, uintptr_t base) {
-    if (!room || !base) return;
+static int32_t SpawnVoidPortal(void *room, uintptr_t base) {
+    if (!room || !base) return -1;
 
     GetCenterPos_t GetCenterPos = reinterpret_cast<GetCenterPos_t>(base + kRoomGetCenterPosRVA);
     GetGridIndex_t GetGridIndex = reinterpret_cast<GetGridIndex_t>(base + kRoomGetGridIndexRVA);
@@ -203,6 +279,7 @@ static void SpawnVoidPortal(void *room, uintptr_t base) {
     // Type 17 = TrapDoor, VarData 1 = Void Portal
     bool ok = SpawnGridEntity(room, gridIdx, 17, 0, desc, 1);
     RepPlusLog(@"Spawned guaranteed Void Portal at tile %d (success: %d)", gridIdx, (int)ok);
+    return ok ? gridIdx : -1;
 }
 
 static void SpawnBigChest(uintptr_t gameAddr, void *room, uintptr_t base) {
@@ -236,6 +313,16 @@ static void SuppressMegaSatanCutscene(uintptr_t gameAddr, uintptr_t base) {
 static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uintptr_t base) {
     if (!gameAddr || !roomAddr || !base) return;
 
+    // Room tracking: reset state when moving to a new room
+    if (roomAddr != g_currentRoomAddr) {
+        g_currentRoomAddr = roomAddr;
+        g_seenMegaSatanPhase2 = false;
+        g_seenMotherPhase2 = false;
+        g_guaranteedPortalGridIdx = -1;
+        g_chestDropDelayTicks = 0;
+        g_spawnedGuaranteedPortal = false;
+    }
+
     int32_t stage = 0;
     int32_t stageType = 0;
     if (!SafeRead(gameAddr + 0x0, stage)) return;
@@ -251,11 +338,8 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
     } else if (stage == 10 || stage == 11) {
         eligibleStage = true;
     }
-
     if (!eligibleStage) return;
 
-    // Check room type:
-    // In Isaac, RoomDescriptorData + 0x8 has RoomType: 5 is ROOM_BOSS, 22 is Mega Satan
     int32_t roomType = 0;
     uintptr_t descriptor = 0;
     if (SafeRead(roomAddr + kRoomDescriptorOffset, descriptor) && descriptor) {
@@ -268,38 +352,80 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
     // In Stage 8 (Corpse II), must be RoomType 5 (Mother)
     if (stage == 8 && roomType != 5) return;
 
-    // In Stage 10 or 11, check for boss room or Mega Satan room
+    // In Stage 10 or 11, check for boss room (5) or Mega Satan room (22)
     if ((stage == 10 || stage == 11) && roomType != 5 && roomType != 22) {
-        // Double-check if big chest is in the room
-        if (!HasBigChest(roomAddr)) return;
+        return;
     }
 
-    // Check if the boss has been defeated
-    if (!IsBossDefeated(roomAddr)) return;
+    bool hasChest = false;
+    bool bossDefeated = CheckBossAndChestState(roomAddr, roomType, stage, stageType, hasChest);
+    if (!bossDefeated) {
+        // Boss fight is still ongoing (Phase 1, transition, or Phase 2)
+        // Clean up any rogue natural portals
+        RemoveNaturalVoidPortals(roomAddr, base, g_guaranteedPortalGridIdx);
+        return;
+    }
 
     // Mega Satan room handling:
     if (roomType == 22) {
-        // 1. Suppress the auto-cutscene so player doesn't get kicked out to menu
+        // Suppress automatic Ending 16 cutscene now that Phase 2 is defeated
         SuppressMegaSatanCutscene(gameAddr, base);
 
-        // 2. Ensure Big Chest is spawned in the room
-        if (!HasBigChest(roomAddr)) {
+        // Ensure Big Chest is spawned in Mega Satan room if not yet present
+        if (!hasChest) {
             SpawnBigChest(gameAddr, reinterpret_cast<void *>(roomAddr), base);
+            hasChest = true;
         }
     }
 
-    // Check if Void Portal is already present
-    if (HasVoidPortal(roomAddr, base)) return;
+    // Calculate target tile for guaranteed portal
+    GetCenterPos_t GetCenterPos = reinterpret_cast<GetCenterPos_t>(base + kRoomGetCenterPosRVA);
+    GetGridIndex_t GetGridIndex = reinterpret_cast<GetGridIndex_t>(base + kRoomGetGridIndexRVA);
+    FindFreeTile_t FindFreeTile = reinterpret_cast<FindFreeTile_t>(base + kRoomFindFreeTileRVA);
 
-    // Conditions verified: spawn guaranteed Void Portal!
-    RepPlusLog(@"Guaranteed Void Portal condition met! Stage: %d, StageType: %d, RoomType: %d",
-               stage, stageType, roomType);
-    SpawnVoidPortal(reinterpret_cast<void *>(roomAddr), base);
+    Vector2f pos = GetCenterPos(reinterpret_cast<void *>(roomAddr));
+    pos.y += 80.0f; // 2 tiles down so portal does not overlap the chest
+    int32_t targetGridIdx = GetGridIndex(reinterpret_cast<void *>(roomAddr), &pos);
+    FindFreeTile(reinterpret_cast<void *>(roomAddr), &targetGridIdx);
+
+    // If portal was already spawned in this room:
+    int32_t existingGridIdx = -1;
+    if (g_spawnedGuaranteedPortal || HasVoidPortal(roomAddr, base, &existingGridIdx)) {
+        if (g_guaranteedPortalGridIdx < 0) {
+            g_guaranteedPortalGridIdx = (existingGridIdx >= 0) ? existingGridIdx : targetGridIdx;
+        }
+        // Remove any natural/duplicate portals that aren't at our target tile
+        RemoveNaturalVoidPortals(roomAddr, base, g_guaranteedPortalGridIdx);
+        return;
+    }
+
+    // Clean up any natural portal before our guaranteed spawn
+    RemoveNaturalVoidPortals(roomAddr, base, -1);
+
+    // Visual polish delay: wait for the chest/trophy drop animation to finish landing (~1.2s = 8 ticks)
+    if (hasChest) {
+        if (++g_chestDropDelayTicks < kChestDropDelayTicks) {
+            return; // Still waiting for chest to fall and hit the floor
+        }
+    }
+
+    // Conditions verified & chest has landed: spawn guaranteed Void Portal!
+    RepPlusLog(@"Spawning guaranteed Void Portal after victory! Stage: %d, RoomType: %d, Tile: %d",
+               stage, roomType, targetGridIdx);
+    int32_t spawnedIdx = SpawnVoidPortal(reinterpret_cast<void *>(roomAddr), base);
+    g_guaranteedPortalGridIdx = (spawnedIdx >= 0) ? spawnedIdx : targetGridIdx;
+    g_spawnedGuaranteedPortal = true;
+
+    // Clean up any other portals
+    RemoveNaturalVoidPortals(roomAddr, base, g_guaranteedPortalGridIdx);
 }
 
 void RepPlusVoidWatchdogTick(void) {
     uintptr_t base = RepPlusGetBaseAddress();
     if (!base) return;
+
+    // Patch natural portal spawn instructions in engine memory
+    PatchNaturalVoidPortals(base);
 
     uintptr_t gamePtrAddr = base + kGameGlobalRVA;
     uintptr_t game = 0;

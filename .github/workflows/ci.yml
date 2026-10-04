@@ -44,15 +44,16 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.6
-          name: "Isaac Repentance+ iOS v1.0.6"
+          tag_name: v1.0.7
+          name: "Isaac Repentance+ iOS v1.0.7"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.6)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.7)
 
-            ### What's New in v1.0.6:
-            - **Seraphim Transformation Display in EID**: Added dynamic hooking for `EIDTransformData` and `EIDTransformationProgress`. Collectible 390 (Seraphim Familiar) now displays both **Conjoined (x/3)** and **Seraphim (x/3)** transformations with live progress tracking in External Item Descriptions.
-            - **Live Transformation Progress Synchronization**: Automatically synchronizes live progress counters between Isaac Repentance+ player state and EID overlay.
-            - **Retained All v1.0.5 Fixes**: Safe direct memory reads for item possession and Seraphim transformation progression, Revelation (0 soul hearts), Mega Bean (6 charges), 2Spooky (Quality 2), and lowered Void portals.
+            ### What's Fixed & Improved in v1.0.7:
+            - **Fixed Mega Satan & Mother Phase 1 Portal Bug**: Guaranteed Void portals now strictly wait until Phase 2 is reached and defeated (Type 275 for Mega Satan, Variant 10 for Mother). Portals and chests will never prematurely trigger during Phase 1 transitions.
+            - **Cinematic Portal Spawn Delay**: Added an aesthetic ~1.2s delay after the victory Big Chest / Trophy drops. Portals now spawn gracefully right after the chest completes its landing animation, matching desktop Repentance+.
+            - **Natural Portal Suppression**: Suppressed engine-native random/awkward Void portal spawn branches in memory and actively purge rogue duplicate portals. Only a single, perfectly aligned portal appears centered 2 tiles below the chest.
+            - **Retained All v1.0.6 Improvements**: Seraphim + Conjoined in EID, live progress tracking, full crash-safe memory access, Revelation (0 soul hearts), Mega Bean (6 charges), and 2Spooky (Quality 2).
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
