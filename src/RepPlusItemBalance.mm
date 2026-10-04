@@ -45,18 +45,11 @@ constexpr size_t kGameCurrentRoomOffset = 0x21550;
 constexpr size_t kRoomEntitiesArrayOffset = 0x19C8;
 constexpr size_t kRoomEntitiesCountOffset = 0x19D4;
 
-// 4. Game Functions
-// CheckTransformation(void *player, int32_t itemId, int32_t arg2, int32_t arg3)
-constexpr uintptr_t kCheckTransformationRVA = 0x1A46B8;
-// Player::HasCollectible(void *player, int32_t itemId)
-constexpr uintptr_t kHasCollectibleRVA = 0x2E58B8;
-
-typedef void (*CheckTransformation_t)(void *player, int32_t itemId, int32_t arg2, int32_t arg3);
-typedef bool (*HasCollectible_t)(void *player, int32_t itemId);
-
-// Entity_Player field offsets
+// 4. Entity_Player field offsets (safe direct memory access, no raw engine calls)
 constexpr size_t kPlayerItemTableOffset = 0x29A0;
+constexpr size_t kPlayerSeraphimCounterOffset = 0x4DB0;
 constexpr size_t kPlayerTransformationBitsOffset = 0x1E64;
+constexpr size_t kPlayerCanFlyOffset = 0x1954;
 
 // Item field offsets (identical across Repentance & Rebirth item structs)
 constexpr size_t kItemFieldId = 0x04;
@@ -344,9 +337,6 @@ void RepPlusPlayerBalanceTick(void) {
     if (!SafeRead(room + kRoomEntitiesArrayOffset, entitiesArrayPtr) || !entitiesArrayPtr) return;
     if (!SafeRead(room + kRoomEntitiesCountOffset, count) || count <= 0 || count > 2048) return;
 
-    HasCollectible_t HasCollectible = reinterpret_cast<HasCollectible_t>(base + kHasCollectibleRVA);
-    CheckTransformation_t CheckTransformation = reinterpret_cast<CheckTransformation_t>(base + kCheckTransformationRVA);
-
     for (int32_t i = 0; i < count; ++i) {
         uintptr_t entity = 0;
         if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), entity) || !entity) continue;
@@ -356,33 +346,38 @@ void RepPlusPlayerBalanceTick(void) {
 
         // Entity_Player is type 1
         if (type == 1) {
-            void *player = reinterpret_cast<void *>(entity);
             uintptr_t playerAddr = entity;
 
-            // Check if player has item 390 (Seraphim Familiar)
+            // Check if player has item 390 (Seraphim Familiar) safely via memory
             bool hasSeraphim = false;
-            if (HasCollectible) {
-                hasSeraphim = HasCollectible(player, 390);
-            } else {
-                uintptr_t table = 0;
-                if (SafeRead(playerAddr + kPlayerItemTableOffset, table) && table) {
-                    uint8_t cnt = 0;
-                    if (SafeRead(table + 390, cnt) && cnt > 0) {
-                        hasSeraphim = true;
-                    }
+            uintptr_t table = 0;
+            if (SafeRead(playerAddr + kPlayerItemTableOffset, table) && table) {
+                uint8_t cnt = 0;
+                if (SafeRead(table + 390, cnt) && cnt > 0) {
+                    hasSeraphim = true;
                 }
             }
 
             if (hasSeraphim) {
                 if (g_seraphimCreditedPlayers.find(playerAddr) == g_seraphimCreditedPlayers.end()) {
-                    // Check if player already completed Seraphim transformation (bit 0x80)
-                    uint32_t transformBits = 0;
-                    SafeRead(playerAddr + kPlayerTransformationBitsOffset, transformBits);
+                    // Advance Seraphim progress counter safely in memory
+                    int32_t currentProgress = 0;
+                    SafeRead(playerAddr + kPlayerSeraphimCounterOffset, currentProgress);
+                    currentProgress += 1;
+                    SafeWrite(playerAddr + kPlayerSeraphimCounterOffset, currentProgress);
 
-                    if ((transformBits & 0x80) == 0 && CheckTransformation) {
-                        // Advance Seraphim transformation by 1 natively via The Halo (101) logic
-                        CheckTransformation(player, 101, 0, 1);
-                        RepPlusLog(@"Credited Seraphim familiar (390) towards Seraphim transformation for player %p", player);
+                    RepPlusLog(@"Credited Seraphim familiar (390) towards Seraphim transformation for player 0x%lx (progress: %d/3)",
+                               (unsigned long)playerAddr, currentProgress);
+
+                    if (currentProgress >= 3) {
+                        uint32_t transformBits = 0;
+                        SafeRead(playerAddr + kPlayerTransformationBitsOffset, transformBits);
+                        transformBits |= 0x80; // Seraphim bit
+                        SafeWrite(playerAddr + kPlayerTransformationBitsOffset, transformBits);
+
+                        uint8_t canFly = 1;
+                        SafeWrite(playerAddr + kPlayerCanFlyOffset, canFly);
+                        RepPlusLog(@"Player 0x%lx completed Seraphim transformation! Granted flight.", (unsigned long)playerAddr);
                     }
 
                     g_seraphimCreditedPlayers.insert(playerAddr);

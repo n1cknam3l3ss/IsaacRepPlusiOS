@@ -44,19 +44,15 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.4
-          name: "Isaac Repentance+ iOS v1.0.4"
+          tag_name: v1.0.5
+          name: "Isaac Repentance+ iOS v1.0.5"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.4)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.5)
 
-            ### What's Fixed in v1.0.4:
-            - **Repentance ItemConfig Resolution**: Fixed root cause where balance patches were only targeting the Afterbirth+ ItemConfig (`AppManager + 0x32880`) and aborting due to item count. Now resolves and patches the actual Repentance ItemConfig (`*(base + 0xAC2428) + 0x55F30`) as well as the legacy config.
-            - **Revelation (643)**: Successfully removes the +2 soul hearts upon pickup (`soulhearts = 0`).
-            - **Mega Bean (351)**: Sets charges to 6 (`maxcharges = 6`).
-            - **2Spooky (554)**: Sets Quality to 2 (`quality = 2`, `craftquality = 2`).
-            - **Seraphim Familiar (390)**: Fixed Seraphim transformation! Player collectible table now properly detected via `Player + 0x29A0` and native `CheckTransformation` (`base + 0x1A46B8`) is triggered to advance the in-game Seraphim counter and grant flight/costume.
-            - **EID Overlay Synchronization**: Dynamically hooks `EIDDescriptionStore` (when EID is present in LiveContainer) to show Quality 2 for 2Spooky and 6 charges for Mega Bean in the HUD display.
-            - **Additional Rep+ Rebalances**: D12 (2 charges), Breath of Life (4 charges), Dataminer (3 charges), Camo Undies (Q2), Milk! (Q2), Shade (Q2), My Shadow (Q2).
+            ### What's Fixed in v1.0.5:
+            - **Fixed Crash on Entering Run**: Root cause identified from crash reports (`LiveContainer-*.ips`). Calling the internal engine function `Player::HasCollectible(player, 390)` caused a null-dereference (`EXC_BAD_ACCESS at 0x1F70FC`) because game state globals (`*0x100AC0C10`) are uninitialized during room load.
+            - **Safe Player Memory Access**: Replaced all direct engine function calls with safe memory reads via `SafeRead`/`SafeWrite` (`player + 0x29A0`), completely eliminating any chance of SIGSEGV upon entering a run.
+            - **Repentance ItemConfig & EID**: Retained all v1.0.4 fixes (Repentance ItemConfig resolution for Revelation 0 soul hearts, Mega Bean 6 charges, 2Spooky Quality 2, and dynamic EID HUD synchronization).
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
