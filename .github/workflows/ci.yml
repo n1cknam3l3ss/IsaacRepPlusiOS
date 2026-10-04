@@ -44,16 +44,19 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.7
-          name: "Isaac Repentance+ iOS v1.0.7"
+          tag_name: v1.0.8
+          name: "Isaac Repentance+ iOS v1.0.8"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.7)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.8)
 
-            ### What's Fixed & Improved in v1.0.7:
-            - **Fixed Mega Satan & Mother Phase 1 Portal Bug**: Guaranteed Void portals now strictly wait until Phase 2 is reached and defeated (Type 275 for Mega Satan, Variant 10 for Mother). Portals and chests will never prematurely trigger during Phase 1 transitions.
-            - **Cinematic Portal Spawn Delay**: Added an aesthetic ~1.2s delay after the victory Big Chest / Trophy drops. Portals now spawn gracefully right after the chest completes its landing animation, matching desktop Repentance+.
-            - **Natural Portal Suppression**: Suppressed engine-native random/awkward Void portal spawn branches in memory and actively purge rogue duplicate portals. Only a single, perfectly aligned portal appears centered 2 tiles below the chest.
-            - **Retained All v1.0.6 Improvements**: Seraphim + Conjoined in EID, live progress tracking, full crash-safe memory access, Revelation (0 soul hearts), Mega Bean (6 charges), and 2Spooky (Quality 2).
+            ### What's New in v1.0.8:
+            - **Disabled Void Portals in Challenges & Daily Runs**: Added engine-level challenge detection (`Game + 0x1cf438` challenge ID and `Game + 0x1cf4c0` daily challenge flag). Void portals are completely disabled in all challenge runs and daily runs, allowing players to touch the Trophy and complete challenges without unwanted portals.
+            - **Retained All v1.0.7 Improvements**:
+              - Mega Satan & Mother Phase 1 fix (only triggers after Phase 2 is dead);
+              - Cinematic chest landing delay (~1.2s after chest drops);
+              - Full suppression and purge of natural/duplicate Void portals;
+              - Seraphim + Conjoined in EID with live counter synchronization;
+              - Revelation (0 soul hearts), Mega Bean (6 charges), 2Spooky (Quality 2).
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:

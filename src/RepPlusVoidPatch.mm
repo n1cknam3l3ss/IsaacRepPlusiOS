@@ -12,6 +12,8 @@ constexpr const char *kSupportedUUID = "F4357753-A25F-30EE-BACF-63709F902895";
 
 constexpr uintptr_t kGameGlobalRVA = 0xAC3B90;
 constexpr size_t kGameCurrentRoomOffset = 0x21550;
+constexpr size_t kGameChallengeOffset = 0x1CF438;
+constexpr size_t kGameDailyChallengeOffset = 0x1CF4C0;
 
 constexpr size_t kRoomDescriptorOffset = 0x8;
 constexpr size_t kRoomDescriptorDataOffset = 0x10;
@@ -213,8 +215,12 @@ static bool CheckBossAndChestState(uintptr_t roomAddr, int32_t roomType, int32_t
         SafeRead(entity + 0x1C3, isDead);
 
         // Pickup (5): Big Chest (340) or Trophy (370)
-        if (type == 5 && (variant == 340 || variant == 370)) {
-            foundEndingChest = true;
+        if (type == 5) {
+            if (variant == 340) {
+                foundEndingChest = true;
+            } else if (variant == 370 && stage == 8 && stageType == 4) {
+                foundEndingChest = true; // Mother Trophy in Corpse II
+            }
         }
 
         // Track Mega Satan: Type 275 is Mega Satan Phase 2
@@ -321,6 +327,19 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
         g_guaranteedPortalGridIdx = -1;
         g_chestDropDelayTicks = 0;
         g_spawnedGuaranteedPortal = false;
+    }
+
+    // Do not spawn Void Portals in Challenges or Daily runs
+    int32_t challengeId = 0;
+    if (SafeRead(gameAddr + kGameChallengeOffset, challengeId) && challengeId != 0) {
+        RemoveNaturalVoidPortals(roomAddr, base, -1);
+        return;
+    }
+
+    int32_t dailyChallenge = 0;
+    if (SafeRead(gameAddr + kGameDailyChallengeOffset, dailyChallenge) && dailyChallenge != 0) {
+        RemoveNaturalVoidPortals(roomAddr, base, -1);
+        return;
     }
 
     int32_t stage = 0;
