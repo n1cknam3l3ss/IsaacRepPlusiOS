@@ -375,28 +375,15 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
         }
     }
 
-    // Calculate target tile for guaranteed portal
-    GetCenterPos_t GetCenterPos = reinterpret_cast<GetCenterPos_t>(base + kRoomGetCenterPosRVA);
-    GetGridIndex_t GetGridIndex = reinterpret_cast<GetGridIndex_t>(base + kRoomGetGridIndexRVA);
-    FindFreeTile_t FindFreeTile = reinterpret_cast<FindFreeTile_t>(base + kRoomFindFreeTileRVA);
-
-    Vector2f pos = GetCenterPos(reinterpret_cast<void *>(roomAddr));
-    pos.y += 80.0f; // 2 tiles down so portal does not overlap the chest
-    int32_t targetGridIdx = GetGridIndex(reinterpret_cast<void *>(roomAddr), &pos);
-    FindFreeTile(reinterpret_cast<void *>(roomAddr), &targetGridIdx);
-
-    // If portal was already spawned in this room:
-    int32_t existingGridIdx = -1;
-    if (g_spawnedGuaranteedPortal || HasVoidPortal(roomAddr, base, &existingGridIdx)) {
-        if (g_guaranteedPortalGridIdx < 0) {
-            g_guaranteedPortalGridIdx = (existingGridIdx >= 0) ? existingGridIdx : targetGridIdx;
-        }
-        // Remove any natural/duplicate portals that aren't at our target tile
+    // If guaranteed portal was already spawned in this room:
+    if (g_spawnedGuaranteedPortal) {
+        // Keep our portal, remove any duplicate/natural portals that aren't at our target tile
         RemoveNaturalVoidPortals(roomAddr, base, g_guaranteedPortalGridIdx);
         return;
     }
 
-    // Clean up any natural portal before our guaranteed spawn
+    // Boss was defeated, but guaranteed portal has not yet spawned.
+    // Suppress/destroy any vanilla natural portal that spawned prematurely!
     RemoveNaturalVoidPortals(roomAddr, base, -1);
 
     // Visual polish delay: wait for the chest/trophy drop animation to finish landing (~1.2s = 8 ticks)
@@ -406,7 +393,16 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
         }
     }
 
-    // Conditions verified & chest has landed: spawn guaranteed Void Portal!
+    // Conditions verified & chest has landed: calculate target tile and spawn guaranteed Void Portal!
+    GetCenterPos_t GetCenterPos = reinterpret_cast<GetCenterPos_t>(base + kRoomGetCenterPosRVA);
+    GetGridIndex_t GetGridIndex = reinterpret_cast<GetGridIndex_t>(base + kRoomGetGridIndexRVA);
+    FindFreeTile_t FindFreeTile = reinterpret_cast<FindFreeTile_t>(base + kRoomFindFreeTileRVA);
+
+    Vector2f pos = GetCenterPos(reinterpret_cast<void *>(roomAddr));
+    pos.y += 80.0f; // 2 tiles down so portal does not overlap the chest
+    int32_t targetGridIdx = GetGridIndex(reinterpret_cast<void *>(roomAddr), &pos);
+    FindFreeTile(reinterpret_cast<void *>(roomAddr), &targetGridIdx);
+
     RepPlusLog(@"Spawning guaranteed Void Portal after victory! Stage: %d, RoomType: %d, Tile: %d",
                stage, roomType, targetGridIdx);
     int32_t spawnedIdx = SpawnVoidPortal(reinterpret_cast<void *>(roomAddr), base);

@@ -44,21 +44,16 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.9
-          name: "Isaac Repentance+ iOS v1.0.9"
+          tag_name: v1.0.10
+          name: "Isaac Repentance+ iOS v1.0.10"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.9)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.10)
 
-            ### What's Fixed in v1.0.9:
-            - **Fixed Crash on Run Entry (Codesigning Protection Fault)**: Removed in-memory instruction patching of executable `__TEXT` code pages (`PatchNaturalVoidPortals`), which caused a `KERN_PROTECTION_FAILURE` / `CODESIGNING: Invalid Page` crash on iOS (especially inside LiveContainer).
-            - **Non-Invasive Rogue Portal Purge**: Rogue/natural duplicate Void portals are now safely detected and cleaned up via heap grid entity management (`SafeReadBytes` batch scanning + C++ deleting destructor), completely eliminating crashes while keeping 100% clean single-portal generation.
-            - **Performance Optimization**: Scanning of rooms now exits immediately on all regular floors (Basement through Womb non-boss rooms) with zero overhead, and grid entity reads use batch memory copies.
-            - **Retained All Features**:
-              - Complete disabling of Void portals during Challenge runs and Daily runs;
-              - Mega Satan & Mother Phase 1 fix (only triggers after Phase 2 is dead);
-              - Cinematic chest landing delay (~1.2s after chest drops);
-              - Seraphim + Conjoined in EID with live counter synchronization;
-              - Revelation (0 soul hearts), Mega Bean (6 charges), 2Spooky (Quality 2).
+            ### What's Fixed in v1.0.10:
+            - **Restored Mega Satan Chest Landing Delay & Void Portal Timing**: Fixed a logic bug where vanilla 50% natural Void portals spawned prematurely upon Mega Satan's death and were accepted immediately, skipping the ~1.2s chest drop landing delay and placing the portal at the wrong tile.
+            - **Continuous Natural Portal Suppression**: During the chest falling animation, any prematurely spawned natural portals are actively purged every tick until the Big Chest finishes landing on the floor. Once the chest lands, the guaranteed Void Portal spawns cleanly exactly 2 tiles below the Big Chest.
+            - **Crash-Free Heap Grid Entity Management**: All portal management operates purely through heap grid entities and C++ destructors without touching executable `__TEXT` code pages, fully compatible with LiveContainer and rootless jailbreak.
+            - **All Features Retained**: Mega Satan & Mother Phase 2 validation, Challenge/Daily run suppression, Seraphim/Conjoined EID live counters, and Rep+ item balance changes.
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
