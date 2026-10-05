@@ -31,9 +31,9 @@ Compatible with iOS 15.0 - 17.x+ on ARM64 devices.
 
 ### B. LiveContainer (Non-Jailbroken / Sideloaded)
 1. Download `IsaacRepPlusiOS-LiveContainer.framework.zip` from Releases.
-2. In LiveContainer, open App Settings for *The Binding of Isaac*.
-3. Tap **Add Framework** and select the downloaded zip file.
-4. Launch the game.
+2. Extract `IsaacRepPlusiOS-LiveContainer.framework.zip`
+3. Place the extracted folder in `Live Container/Tweaks/Isaac`
+4. Open LiveContainer, Long-press **TBOI: Rebirth**, tap Settings, select tweak folder `Isaac` or however you named it.
 
 ### C. Direct IPA Injection (TrollStore / Sideloadly / Azule)
 1. Download `IsaacRepPlusiOS.dylib`.
