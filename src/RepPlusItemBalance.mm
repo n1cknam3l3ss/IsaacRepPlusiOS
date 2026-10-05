@@ -149,61 +149,6 @@ static bool PatchItemsInConfig(uintptr_t itemConfigAddr, const char *configName)
         }
     }
 
-    // Additional Rep+ ItemConfig balance improvements:
-    // D12 (440): 2 charges (was 3)
-    if (count > 440) {
-        uintptr_t d12 = GetItemPtr(440);
-        if (d12) WriteItemField32(d12, kItemFieldMaxCharges, 2, "maxcharges", 440);
-    }
-
-    // Breath of Life (326): 4 charges (was 6)
-    if (count > 326) {
-        uintptr_t bol = GetItemPtr(326);
-        if (bol) WriteItemField32(bol, kItemFieldMaxCharges, 4, "maxcharges", 326);
-    }
-
-    // Dataminer (474): 3 charges (was 4)
-    if (count > 474) {
-        uintptr_t dataminer = GetItemPtr(474);
-        if (dataminer) WriteItemField32(dataminer, kItemFieldMaxCharges, 3, "maxcharges", 474);
-    }
-
-    // Camo Undies (460): Quality 2 (was 1)
-    if (count > 460) {
-        uintptr_t camo = GetItemPtr(460);
-        if (camo) {
-            WriteItemField32(camo, kItemFieldQuality, 2, "quality", 460);
-            WriteItemField32(camo, kItemFieldCraftQuality, 2, "craftquality", 460);
-        }
-    }
-
-    // Milk! (406): Quality 2 (was 1)
-    if (count > 406) {
-        uintptr_t milk = GetItemPtr(406);
-        if (milk) {
-            WriteItemField32(milk, kItemFieldQuality, 2, "quality", 406);
-            WriteItemField32(milk, kItemFieldCraftQuality, 2, "craftquality", 406);
-        }
-    }
-
-    // Shade (446): Quality 2 (was 1)
-    if (count > 446) {
-        uintptr_t shade = GetItemPtr(446);
-        if (shade) {
-            WriteItemField32(shade, kItemFieldQuality, 2, "quality", 446);
-            WriteItemField32(shade, kItemFieldCraftQuality, 2, "craftquality", 446);
-        }
-    }
-
-    // My Shadow (429): Quality 2 (was 1)
-    if (count > 429) {
-        uintptr_t myShadow = GetItemPtr(429);
-        if (myShadow) {
-            WriteItemField32(myShadow, kItemFieldQuality, 2, "quality", 429);
-            WriteItemField32(myShadow, kItemFieldCraftQuality, 2, "craftquality", 429);
-        }
-    }
-
     RepPlusLog(@"Rep+ balance patches successfully applied to %s (count: %zu)", configName, count);
     return allApplied;
 }

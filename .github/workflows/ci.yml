@@ -44,16 +44,19 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.10
-          name: "Isaac Repentance+ iOS v1.0.10"
+          tag_name: v1.0.11
+          name: "Isaac Repentance+ iOS v1.0.11"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.10)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.11)
 
-            ### What's Fixed in v1.0.10:
-            - **Restored Mega Satan Chest Landing Delay & Void Portal Timing**: Fixed a logic bug where vanilla 50% natural Void portals spawned prematurely upon Mega Satan's death and were accepted immediately, skipping the ~1.2s chest drop landing delay and placing the portal at the wrong tile.
-            - **Continuous Natural Portal Suppression**: During the chest falling animation, any prematurely spawned natural portals are actively purged every tick until the Big Chest finishes landing on the floor. Once the chest lands, the guaranteed Void Portal spawns cleanly exactly 2 tiles below the Big Chest.
-            - **Crash-Free Heap Grid Entity Management**: All portal management operates purely through heap grid entities and C++ destructors without touching executable `__TEXT` code pages, fully compatible with LiveContainer and rootless jailbreak.
-            - **All Features Retained**: Mega Satan & Mother Phase 2 validation, Challenge/Daily run suppression, Seraphim/Conjoined EID live counters, and Rep+ item balance changes.
+            ### What's Fixed in v1.0.11:
+            - **Cleaned Up ItemConfig Overwrites**: Removed extraneous and invalid item ID modifications (e.g. Breath of Life timed hold mechanic, Kidney Stone, Broken Glass Cannon, Head of the Keeper).
+            - **Authentic Rep+ Balance Focus**:
+              - **Revelation (ID 643)**: 0 soul hearts upon pickup (authentic Rep+ nerf).
+              - **Mega Bean (ID 351)**: 6 charges (authentic Rep+ rework).
+              - **2Spooky (ID 554)**: Quality 2 (authentic Rep+ buff).
+              - **Transformations (Seraphim & Conjoined)**: Soul Locket, Act of Contrition, Twisted Pair, Incubus dynamically credited to player counters and synced in EID.
+            - **All Void Portal Features Retained**: Mega Satan chest delay (~1.2s), Phase 1/Phase 2 strict validation, continuous natural portal suppression, guaranteed Void portals after Mega Satan, Mother, The Lamb, and ???.
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
