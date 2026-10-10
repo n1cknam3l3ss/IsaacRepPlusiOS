@@ -44,19 +44,15 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.11
-          name: "Isaac Repentance+ iOS v1.0.11"
+          tag_name: v1.0.12
+          name: "Isaac Repentance+ iOS v1.0.12 (Phase 2 Clean Dylib)"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.11)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.12)
 
-            ### What's Fixed in v1.0.11:
-            - **Cleaned Up ItemConfig Overwrites**: Removed extraneous and invalid item ID modifications (e.g. Breath of Life timed hold mechanic, Kidney Stone, Broken Glass Cannon, Head of the Keeper).
-            - **Authentic Rep+ Balance Focus**:
-              - **Revelation (ID 643)**: 0 soul hearts upon pickup (authentic Rep+ nerf).
-              - **Mega Bean (ID 351)**: 6 charges (authentic Rep+ rework).
-              - **2Spooky (ID 554)**: Quality 2 (authentic Rep+ buff).
-              - **Transformations (Seraphim & Conjoined)**: Soul Locket, Act of Contrition, Twisted Pair, Incubus dynamically credited to player counters and synced in EID.
-            - **All Void Portal Features Retained**: Mega Satan chest delay (~1.2s), Phase 1/Phase 2 strict validation, continuous natural portal suppression, guaranteed Void portals after Mega Satan, Mother, The Lamb, and ???.
+            ### Phase 2 Clean Dylib:
+            - **Removed Runtime Memory Item Poking**: Item balance is now 100% native in `items.xml` assets, eliminating conflicts and memory race conditions.
+            - **100% Guaranteed Void Portals**: Retained `RepPlusVoidPatch` for guaranteed portals after Mega Satan, Mother, The Lamb, and ??? with anti-duplicate suppression.
+            - **Lightweight & High-Performance**: Optimized for LiveContainer & TrollStore without extra RAM overhead.
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:

@@ -17,8 +17,7 @@ RELEASE_ZIP := $(DIST)/IsaacRepPlusiOS.zip
 SOURCES := \
 	$(PROJECT_ROOT)/src/RepPlusBootstrap.mm \
 	$(PROJECT_ROOT)/src/RepPlusLogger.mm \
-	$(PROJECT_ROOT)/src/RepPlusVoidPatch.mm \
-	$(PROJECT_ROOT)/src/RepPlusItemBalance.mm
+	$(PROJECT_ROOT)/src/RepPlusVoidPatch.mm
 
 .PHONY: all dylib package livecontainer dist clean
 

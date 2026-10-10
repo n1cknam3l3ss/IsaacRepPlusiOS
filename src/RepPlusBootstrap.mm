@@ -1,6 +1,5 @@
 #import "RepPlusBootstrap.h"
 #import "RepPlusVoidPatch.h"
-#import "RepPlusItemBalance.h"
 #import "RepPlusLogger.h"
 
 #import <UIKit/UIKit.h>
@@ -18,18 +17,17 @@ void RepPlusStart(void) {
 
         RepPlusLog(@"Initializing IsaacRepPlusiOS tweak (base: 0x%lx)", (unsigned long)base);
 
-        // Start repeating timer for guaranteed Void portal and balance tracking
+        // Start repeating timer for guaranteed Void portal tracking
         g_watchdogTimer = [NSTimer scheduledTimerWithTimeInterval:0.15
                                                           repeats:YES
                                                             block:^(NSTimer * _Nonnull timer) {
             @autoreleasepool {
                 RepPlusVoidWatchdogTick();
-                RepPlusPlayerBalanceTick();
             }
         }];
         [[NSRunLoop mainRunLoop] addTimer:g_watchdogTimer forMode:NSRunLoopCommonModes];
 
-        RepPlusLog(@"IsaacRepPlusiOS active! Guaranteed Void portals & Rep+ item balance enabled.");
+        RepPlusLog(@"IsaacRepPlusiOS active! Guaranteed Void portals enabled (Item balance handled natively by Rep+ XML).");
     });
 }
 
