@@ -1,4 +1,5 @@
 # IsaacRepPlusiOS
+note: everything here is made by antigravity, even this readme.
 
 Standalone iOS tweak bringing key **Repentance+ (v1.9.x)** quality-of-life and balance features to *The Binding of Isaac: Repentance* on iOS (Build UUID: `F4357753-A25F-30EE-BACF-63709F902895`).
 
