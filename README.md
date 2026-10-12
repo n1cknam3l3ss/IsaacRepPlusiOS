@@ -24,7 +24,7 @@ The Void Portal is spawned natively via the game's internal `Room::SpawnGridEnti
 
 ## Compatibility & Installation
 
-Compatible with iOS 15.0 - 17.x+ on ARM64 devices.
+Compatible with iOS 15.0 - 27.x+ on ARM64 devices.
 
 ### A. Rootless Jailbreak (Dopamine / Palera1n / Sileo)
 1. Download `IsaacRepPlusiOS-rootless.deb` from the [Releases](https://github.com/n1cknam3l3ss/IsaacRepPlusiOS/releases) page.
