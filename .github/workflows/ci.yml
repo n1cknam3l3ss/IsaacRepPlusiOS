@@ -50,11 +50,10 @@ jobs:
             ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.15)
 
             ### What's Fixed in v1.0.15:
-            - **Fixed Immediate Run-Start / Continue Crash (Invalid Page / CodeSigning)**:
-              - In v1.0.14, an attempt to write an ARM64 `RET` instruction to `__TEXT` at `0x1006ddcdc` modified an executable page.
-              - On non-jailbroken iOS / LiveContainer, modifying `__TEXT` triggers iOS kernel codesigning enforcement (`CODESIGNING: Invalid Page (Failed to fault in a page with execute permissions)`), terminating the game on run start or continue.
-              - **100% Pure Data-Only Architecture**: All writes to executable `__TEXT` code pages have been completely eliminated.
-              - Cutscene suppression now operates strictly via heap data: setting `[entity + 0xbd4] = -1` on the Mega Satan Phase 2 entity. The game's native Mega Satan death handler (`0x10078c954`) cleanly branches past the cutscene call (`tbnz w8, #0x1f, #0x10078c9b8`) with zero code modification and zero kernel protection violations.
+            - **Mega Satan Cutscene Suppression & Duplicate Chest Fix**:
+              - Suppresses the automatic Ending 16 cutscene without crashing using native controller data (`room + 0x8DEC = -1`) and valid cutscene dummy object.
+              - Eliminates duplicate Big Chest in Mega Satan's room (only one Big Chest drops).
+            - **100% Pure Data-Only Architecture**: All writes to executable `__TEXT` code pages eliminated to ensure zero codesigning crashes on non-jailbroken iOS / LiveContainer.
             - **Guaranteed Void Portals**: 100% guaranteed Void Portals after Mega Satan, Mother (Corpse II), The Lamb (Dark Room), and ??? / Blue Baby (Chest).
 
             ### Installation:
