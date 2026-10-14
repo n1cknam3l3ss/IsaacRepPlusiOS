@@ -26,9 +26,9 @@ static void RepPlusTryInit(void) {
         g_retryTimer = nil;
     }
 
-    RepPlusLog(@"Initializing IsaacRepPlusiOS tweak v1.0.14 (base: 0x%lx)", (unsigned long)base);
+    RepPlusLog(@"Initializing IsaacRepPlusiOS tweak v1.0.15 (base: 0x%lx)", (unsigned long)base);
 
-    // Run one-time initialization (e.g. cutscene suppression code patch)
+    // Run one-time initialization
     RepPlusVoidPatchInit(base);
 
     // Start repeating timer for guaranteed Void portal tracking
@@ -41,7 +41,7 @@ static void RepPlusTryInit(void) {
     }];
     [[NSRunLoop mainRunLoop] addTimer:g_watchdogTimer forMode:NSRunLoopCommonModes];
 
-    RepPlusLog(@"IsaacRepPlusiOS v1.0.14 active! Guaranteed Void portals watchdog running.");
+    RepPlusLog(@"IsaacRepPlusiOS v1.0.15 active! Guaranteed Void portals watchdog running.");
 }
 
 void RepPlusStart(void) {

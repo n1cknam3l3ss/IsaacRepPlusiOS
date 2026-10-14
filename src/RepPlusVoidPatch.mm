@@ -33,7 +33,6 @@ constexpr uintptr_t kRoomFindFreeTileRVA = 0x5AB878;
 constexpr uintptr_t kGetDefaultDescRVA = 0x7F1CC0;
 constexpr uintptr_t kRoomSpawnGridEntityRVA = 0x59ABC4;
 constexpr uintptr_t kGameSpawnEntityRVA = 0x88FCBC;
-constexpr uintptr_t kMegaSatanCutsceneTriggerRVA = 0x6DDCDC;
 
 struct Vector2f {
     float x;
@@ -171,12 +170,7 @@ static void RemoveDuplicateVoidPortals(uintptr_t roomAddr, uintptr_t base, int32
 
 void RepPlusVoidPatchInit(uintptr_t base) {
     if (!base) return;
-    // Attempt code-level patch on 0x1006ddcdc (Mega Satan Ending 16 cutscene trigger)
-    // Writing ARM64 `ret` (0xD65F03C0) ensures that if called, it safely returns immediately.
-    uint32_t arm64_ret = 0xD65F03C0;
-    bool ok = SafeWrite(base + kMegaSatanCutsceneTriggerRVA, arm64_ret);
-    RepPlusLog(@"Mega Satan Ending 16 cutscene code patch at 0x%lx: %d",
-               (unsigned long)(base + kMegaSatanCutsceneTriggerRVA), (int)ok);
+    RepPlusLog(@"RepPlusVoidPatch initialized in pure data-only mode (base: 0x%lx)", (unsigned long)base);
 }
 
 static void SpawnBigChest(uintptr_t gameAddr, void *room, uintptr_t base) {

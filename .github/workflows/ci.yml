@@ -44,18 +44,18 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.14
-          name: "Isaac Repentance+ iOS v1.0.14 (Mega Satan Cutscene Crash Fix)"
+          tag_name: v1.0.15
+          name: "Isaac Repentance+ iOS v1.0.15 (Pure Data-Only / Jailed LiveContainer Fix)"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.14)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.15)
 
-            ### What's Fixed in v1.0.14:
-            - **Fixed Mega Satan Crash Upon Defeat**: In v1.0.13, attempting to suppress the Ending 16 cutscene via `CutsceneEvent + 0x10` caused `SIGSEGV` / `EXC_BAD_ACCESS` when the engine update loop tried to dereference the sentinel pointer (`ldr w8, [x8, #8]`).
-            - **Clean Engine-Level Cutscene Suppression**:
-              - Defeating Mega Satan Phase 2 sets `[entity + 0xbd4] = -1`. The game's native Mega Satan death routine (`0x10078c954`) evaluates `tbnz w8, #0x1f, #0x10078c9b8` and skips the Ending 16 cutscene trigger cleanly without memory corruption.
-              - Added code-level `RET` protection on `0x1006ddcdc` (Mega Satan cutscene trigger function).
-              - Mega Satan now drops the Big Chest (5.340) and spawns the guaranteed Void Portal below the chest with zero crashes.
-            - **All Boss Void Portals Verified**: Void Portals now spawn reliably after Mega Satan, Mother (Corpse II), The Lamb (Dark Room), and ??? / Blue Baby (Chest).
+            ### What's Fixed in v1.0.15:
+            - **Fixed Immediate Run-Start / Continue Crash (Invalid Page / CodeSigning)**:
+              - In v1.0.14, an attempt to write an ARM64 `RET` instruction to `__TEXT` at `0x1006ddcdc` modified an executable page.
+              - On non-jailbroken iOS / LiveContainer, modifying `__TEXT` triggers iOS kernel codesigning enforcement (`CODESIGNING: Invalid Page (Failed to fault in a page with execute permissions)`), terminating the game on run start or continue.
+              - **100% Pure Data-Only Architecture**: All writes to executable `__TEXT` code pages have been completely eliminated.
+              - Cutscene suppression now operates strictly via heap data: setting `[entity + 0xbd4] = -1` on the Mega Satan Phase 2 entity. The game's native Mega Satan death handler (`0x10078c954`) cleanly branches past the cutscene call (`tbnz w8, #0x1f, #0x10078c9b8`) with zero code modification and zero kernel protection violations.
+            - **Guaranteed Void Portals**: 100% guaranteed Void Portals after Mega Satan, Mother (Corpse II), The Lamb (Dark Room), and ??? / Blue Baby (Chest).
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
