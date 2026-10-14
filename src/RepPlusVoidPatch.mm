@@ -173,19 +173,6 @@ void RepPlusVoidPatchInit(uintptr_t base) {
     RepPlusLog(@"RepPlusVoidPatch initialized in pure data-only mode (base: 0x%lx)", (unsigned long)base);
 }
 
-static void SpawnBigChest(uintptr_t gameAddr, void *room, uintptr_t base) {
-    if (!gameAddr || !room || !base) return;
-
-    GetCenterPos_t GetCenterPos = reinterpret_cast<GetCenterPos_t>(base + kRoomGetCenterPosRVA);
-    GameSpawn_t GameSpawn = reinterpret_cast<GameSpawn_t>(base + kGameSpawnEntityRVA);
-
-    Vector2f center = GetCenterPos(room);
-    Vector2f zeroVel = {0.0f, 0.0f};
-
-    void *chest = GameSpawn(reinterpret_cast<void *>(gameAddr), 5, 340, &center, &zeroVel, nullptr, 0, 1);
-    RepPlusLog(@"Spawned Big Chest (5.340) in Mega Satan room (ptr: 0x%lx)", (unsigned long)chest);
-}
-
 static int32_t SpawnVoidPortal(void *room, uintptr_t base) {
     if (!room || !base) return -1;
 
@@ -233,7 +220,14 @@ static bool CheckBossAndChestState(uintptr_t roomAddr, int32_t stage, int32_t st
         // Pickup (5): Big Chest (340) or Trophy (370)
         if (type == 5) {
             if (variant == 340) {
-                foundEndingChest = true;
+                if (foundEndingChest && g_isMegaSatanRoom) {
+                    // Clean up duplicate Big Chest in Mega Satan room
+                    uint8_t dead = 1;
+                    SafeWrite(entity + 0x1C3, dead);
+                    RepPlusLog(@"Cleaned up duplicate Big Chest in Mega Satan room");
+                } else {
+                    foundEndingChest = true;
+                }
             } else if (variant == 370 && stage == 8 && stageType == 4) {
                 foundEndingChest = true; // Mother Trophy in Corpse II
             }
@@ -344,14 +338,6 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
     // Check boss defeat and chest state
     bool hasChest = false;
     bool bossDefeated = CheckBossAndChestState(roomAddr, stage, stageType, hasChest);
-
-    // Mega Satan room handling immediately upon victory:
-    if (g_isMegaSatanRoom && g_megaSatanDefeated) {
-        if (!hasChest) {
-            SpawnBigChest(gameAddr, reinterpret_cast<void *>(roomAddr), base);
-            hasChest = true;
-        }
-    }
 
     // If Void Portal already exists in the room (natural 50% spawn or previous guaranteed spawn):
     int32_t existingPortalIdx = -1;
