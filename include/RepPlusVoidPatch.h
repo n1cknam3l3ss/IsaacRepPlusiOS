@@ -13,6 +13,9 @@ uintptr_t RepPlusGetBaseAddress(void);
 /// Check if Isaac executable is verified and ready
 bool RepPlusIsSupportedBuild(uintptr_t *outBase);
 
+/// Initialize patch state and optional code protections
+void RepPlusVoidPatchInit(uintptr_t base);
+
 /// Periodic check called from main thread watchdog
 void RepPlusVoidWatchdogTick(void);
 

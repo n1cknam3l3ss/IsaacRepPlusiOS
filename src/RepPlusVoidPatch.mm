@@ -33,7 +33,7 @@ constexpr uintptr_t kRoomFindFreeTileRVA = 0x5AB878;
 constexpr uintptr_t kGetDefaultDescRVA = 0x7F1CC0;
 constexpr uintptr_t kRoomSpawnGridEntityRVA = 0x59ABC4;
 constexpr uintptr_t kGameSpawnEntityRVA = 0x88FCBC;
-constexpr uintptr_t kGetCutsceneEventRVA = 0x6D4CB8;
+constexpr uintptr_t kMegaSatanCutsceneTriggerRVA = 0x6DDCDC;
 
 struct Vector2f {
     float x;
@@ -46,7 +46,6 @@ typedef void (*FindFreeTile_t)(void *room, int32_t *gridIndex);
 typedef void* (*GetDefaultDesc_t)();
 typedef bool (*SpawnGridEntity_t)(void *room, int32_t gridIndex, int32_t type, int32_t varIdx, void *desc, int32_t varData);
 typedef void* (*GameSpawn_t)(void *game, int32_t type, int32_t variant, const Vector2f *pos, const Vector2f *velocity, void *spawner, int32_t subType, uint32_t seed);
-typedef void* (*GetCutsceneEvent_t)(void *game, int32_t eventId, int32_t subId);
 
 static NSString *UUIDForHeader(const mach_header_64 *header) {
     if (!header || header->magic != MH_MAGIC_64) return @"";
@@ -170,19 +169,14 @@ static void RemoveDuplicateVoidPortals(uintptr_t roomAddr, uintptr_t base, int32
     }
 }
 
-static void SuppressMegaSatanCutscene(uintptr_t gameAddr, uintptr_t base) {
-    if (!gameAddr || !base) return;
-    GetCutsceneEvent_t GetCutsceneEvent = reinterpret_cast<GetCutsceneEvent_t>(base + kGetCutsceneEventRVA);
-    void *event = GetCutsceneEvent(reinterpret_cast<void *>(gameAddr), -11, -1);
-    if (event) {
-        uintptr_t activeCutscene = 0;
-        SafeRead(reinterpret_cast<uintptr_t>(event) + 0x10, activeCutscene);
-        if (!activeCutscene) {
-            uintptr_t sentinel = 1;
-            SafeWrite(reinterpret_cast<uintptr_t>(event) + 0x10, sentinel);
-            RepPlusLog(@"Suppressed automatic Mega Satan Ending 16 cutscene (player free to enter Void Portal or Big Chest)");
-        }
-    }
+void RepPlusVoidPatchInit(uintptr_t base) {
+    if (!base) return;
+    // Attempt code-level patch on 0x1006ddcdc (Mega Satan Ending 16 cutscene trigger)
+    // Writing ARM64 `ret` (0xD65F03C0) ensures that if called, it safely returns immediately.
+    uint32_t arm64_ret = 0xD65F03C0;
+    bool ok = SafeWrite(base + kMegaSatanCutsceneTriggerRVA, arm64_ret);
+    RepPlusLog(@"Mega Satan Ending 16 cutscene code patch at 0x%lx: %d",
+               (unsigned long)(base + kMegaSatanCutsceneTriggerRVA), (int)ok);
 }
 
 static void SpawnBigChest(uintptr_t gameAddr, void *room, uintptr_t base) {
@@ -257,6 +251,15 @@ static bool CheckBossAndChestState(uintptr_t roomAddr, int32_t stage, int32_t st
         }
         if (type == 275) {
             g_seenMegaSatanPhase2 = true;
+            // Native engine cutscene suppression:
+            // Mega Satan Phase 2 death routine (0x10078c954) checks:
+            //   ldr w8, [x0, #0xbd4]
+            //   tbnz w8, #0x1f, #0x10078c9b8
+            // If bit 31 is set (w8 == -1), the engine natively skips the Ending 16
+            // cutscene trigger and grid entity spawning, returning cleanly without crash.
+            int32_t negOne = -1;
+            SafeWrite(entity + 0xbd4, negOne);
+
             if (!isDead) {
                 float hp = 0.0f;
                 if (SafeRead(entity + 0x354, hp) && hp > 0.0f) {
@@ -350,7 +353,6 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
 
     // Mega Satan room handling immediately upon victory:
     if (g_isMegaSatanRoom && g_megaSatanDefeated) {
-        SuppressMegaSatanCutscene(gameAddr, base);
         if (!hasChest) {
             SpawnBigChest(gameAddr, reinterpret_cast<void *>(roomAddr), base);
             hasChest = true;
