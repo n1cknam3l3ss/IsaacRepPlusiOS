@@ -33,6 +33,7 @@ constexpr uintptr_t kRoomFindFreeTileRVA = 0x5AB878;
 constexpr uintptr_t kGetDefaultDescRVA = 0x7F1CC0;
 constexpr uintptr_t kRoomSpawnGridEntityRVA = 0x59ABC4;
 constexpr uintptr_t kGameSpawnEntityRVA = 0x88FCBC;
+constexpr uintptr_t kGetCutsceneEventRVA = 0x6D4CB8;
 
 struct Vector2f {
     float x;
@@ -45,6 +46,7 @@ typedef void (*FindFreeTile_t)(void *room, int32_t *gridIndex);
 typedef void* (*GetDefaultDesc_t)();
 typedef bool (*SpawnGridEntity_t)(void *room, int32_t gridIndex, int32_t type, int32_t varIdx, void *desc, int32_t varData);
 typedef void* (*GameSpawn_t)(void *game, int32_t type, int32_t variant, const Vector2f *pos, const Vector2f *velocity, void *spawner, int32_t subType, uint32_t seed);
+typedef void* (*GetCutsceneEvent_t)(void *game, int32_t eventId, int32_t subId);
 
 static NSString *UUIDForHeader(const mach_header_64 *header) {
     if (!header || header->magic != MH_MAGIC_64) return @"";
@@ -173,6 +175,32 @@ void RepPlusVoidPatchInit(uintptr_t base) {
     RepPlusLog(@"RepPlusVoidPatch initialized in pure data-only mode (base: 0x%lx)", (unsigned long)base);
 }
 
+alignas(16) static uint8_t g_dummyCutscene[512] = {0};
+static bool g_dummyCutsceneInited = false;
+static uintptr_t g_suppressedCutsceneEvent = 0;
+
+static void SuppressMegaSatanCutscene(uintptr_t gameAddr, uintptr_t base) {
+    if (!gameAddr || !base) return;
+    if (!g_dummyCutsceneInited) {
+        memset(g_dummyCutscene, 0, sizeof(g_dummyCutscene));
+        // Offset 8 in Cutscene object is state: 0x0E (14) means finished/inactive
+        *reinterpret_cast<int32_t *>(g_dummyCutscene + 8) = 0x0E;
+        g_dummyCutsceneInited = true;
+    }
+    GetCutsceneEvent_t GetCutsceneEvent = reinterpret_cast<GetCutsceneEvent_t>(base + kGetCutsceneEventRVA);
+    void *event = GetCutsceneEvent(reinterpret_cast<void *>(gameAddr), -11, -1);
+    if (event) {
+        uintptr_t current = 0;
+        SafeRead(reinterpret_cast<uintptr_t>(event) + 0x10, current);
+        if (!current) {
+            uintptr_t dummyPtr = reinterpret_cast<uintptr_t>(g_dummyCutscene);
+            SafeWrite(reinterpret_cast<uintptr_t>(event) + 0x10, dummyPtr);
+            g_suppressedCutsceneEvent = reinterpret_cast<uintptr_t>(event);
+            RepPlusLog(@"Suppressed automatic Mega Satan Ending 16 cutscene with valid dummy object (ptr: 0x%lx)", dummyPtr);
+        }
+    }
+}
+
 static int32_t SpawnVoidPortal(void *room, uintptr_t base) {
     if (!room || !base) return -1;
 
@@ -239,15 +267,6 @@ static bool CheckBossAndChestState(uintptr_t roomAddr, int32_t stage, int32_t st
         }
         if (type == 275) {
             g_seenMegaSatanPhase2 = true;
-            // Native engine cutscene suppression:
-            // Mega Satan Phase 2 death routine (0x10078c954) checks:
-            //   ldr w8, [x0, #0xbd4]
-            //   tbnz w8, #0x1f, #0x10078c9b8
-            // If bit 31 is set (w8 == -1), the engine natively skips the Ending 16
-            // cutscene trigger and grid entity spawning, returning cleanly without crash.
-            int32_t negOne = -1;
-            SafeWrite(entity + 0xbd4, negOne);
-
             if (!isDead) {
                 float hp = 0.0f;
                 if (SafeRead(entity + 0x354, hp) && hp > 0.0f) {
@@ -296,6 +315,14 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
 
     // Room tracking: reset state when moving to a new room
     if (roomAddr != g_currentRoomAddr) {
+        if (g_suppressedCutsceneEvent) {
+            uintptr_t current = 0;
+            if (SafeRead(g_suppressedCutsceneEvent + 0x10, current) && current == reinterpret_cast<uintptr_t>(g_dummyCutscene)) {
+                uintptr_t zero = 0;
+                SafeWrite(g_suppressedCutsceneEvent + 0x10, zero);
+            }
+            g_suppressedCutsceneEvent = 0;
+        }
         g_currentRoomAddr = roomAddr;
         g_isMegaSatanRoom = false;
         g_seenMegaSatanPhase2 = false;
@@ -324,6 +351,30 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
     }
     if (!eligibleStage) return;
 
+    int32_t roomType = 0;
+    uintptr_t descriptor = 0;
+    if (SafeRead(roomAddr + kRoomDescriptorOffset, descriptor) && descriptor) {
+        uintptr_t roomData = 0;
+        if (SafeRead(descriptor + kRoomDescriptorDataOffset, roomData) && roomData) {
+            SafeRead(roomData + kRoomConfigTypeOffset, roomType);
+        }
+    }
+    if (roomType == 22) {
+        g_isMegaSatanRoom = true;
+    }
+
+    // Mega Satan Room Controller native cutscene suppression:
+    // The Mega Satan room controller is located at roomAddr + 0x8218.
+    // Offset +0xbd4 in this controller (roomAddr + 0x8DEC) holds the tile index
+    // for the Ending 16 cutscene trigger trapdoor.
+    // Routine 0x10078c954 checks: ldr w8, [x0, #0xbd4]; tbnz w8, #0x1f, #0x10078c9b8
+    // Setting bit 31 (int32_t = -1) causes the engine to natively bypass both the
+    // Ending 16 cutscene trigger and grid entity spawning, cleanly returning without crash.
+    if (g_isMegaSatanRoom) {
+        int32_t negOne = -1;
+        SafeWrite(roomAddr + 0x8DEC, negOne);
+    }
+
     // Do not spawn Void Portals in Challenges or Daily runs
     int32_t challengeId = 0;
     if (SafeRead(gameAddr + kGameChallengeOffset, challengeId) && challengeId != 0) {
@@ -338,6 +389,11 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
     // Check boss defeat and chest state
     bool hasChest = false;
     bool bossDefeated = CheckBossAndChestState(roomAddr, stage, stageType, hasChest);
+
+    // Suppress Ending 16 cutscene immediately once victory is confirmed
+    if (g_isMegaSatanRoom && g_megaSatanDefeated) {
+        SuppressMegaSatanCutscene(gameAddr, base);
+    }
 
     // If Void Portal already exists in the room (natural 50% spawn or previous guaranteed spawn):
     int32_t existingPortalIdx = -1;
