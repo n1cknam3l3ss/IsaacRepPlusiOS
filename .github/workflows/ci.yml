@@ -44,15 +44,17 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.12
-          name: "Isaac Repentance+ iOS v1.0.12 (Phase 2 Clean Dylib)"
+          tag_name: v1.0.13
+          name: "Isaac Repentance+ iOS v1.0.13 (Void Portal & Mega Satan Fix)"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.12)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.13)
 
-            ### Phase 2 Clean Dylib:
-            - **Removed Runtime Memory Item Poking**: Item balance is now 100% native in `items.xml` assets, eliminating conflicts and memory race conditions.
-            - **100% Guaranteed Void Portals**: Retained `RepPlusVoidPatch` for guaranteed portals after Mega Satan, Mother, The Lamb, and ??? with anti-duplicate suppression.
-            - **Lightweight & High-Performance**: Optimized for LiveContainer & TrollStore without extra RAM overhead.
+            ### What's Fixed in v1.0.13:
+            - **Fixed Mega Satan Room Detection & Cutscene Suppression**: Replaced invalid `roomType == 22` check with direct entity tracking (`Type 274` Phase 1, `Type 275` Phase 2). Defeating Phase 2 now reliably suppresses the Ending 16 cutscene, spawns the victory Big Chest (5.340), and creates the guaranteed Void Portal.
+            - **Fixed Blue Baby & The Lamb Victory Verification**: Victory is now triggered by Big Chest (`Type 5, Variant 340`) appearance, completely eliminating false lockouts caused by remaining flies or minions (`Type >= 10`).
+            - **Safe Natural Portal Retention**: Rather than prematurely deleting the natural 50% Void Portal and risking spawn desyncs, existing portals are preserved and only excess duplicates are removed.
+            - **LiveContainer Race Condition Fix**: Startup now features a polling retry timer that waits for the Isaac executable to map into dyld, preventing premature initialization failure.
+            - **Added Documents File Logging**: Diagnostic logs are now written directly to `Documents/isaacrepplus_log.txt` on iOS for easy inspection in the Files app.
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
