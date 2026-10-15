@@ -55,6 +55,7 @@ jobs:
               - Eliminates duplicate Big Chest in Mega Satan's room (only one Big Chest drops).
             - **100% Pure Data-Only Architecture**: All writes to executable `__TEXT` code pages eliminated to ensure zero codesigning crashes on non-jailbroken iOS / LiveContainer.
             - **Guaranteed Void Portals**: 100% guaranteed Void Portals after Mega Satan, Mother (Corpse II), The Lamb (Dark Room), and ??? / Blue Baby (Chest).
+            - **Save File Void Unlock Check**: The Void portal will only spawn if The Void has been unlocked on the save file (Secret #320: "New Area", unlocked by defeating Hush for the first time).
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:

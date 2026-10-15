@@ -35,6 +35,11 @@ constexpr uintptr_t kRoomSpawnGridEntityRVA = 0x59ABC4;
 constexpr uintptr_t kGameSpawnEntityRVA = 0x88FCBC;
 constexpr uintptr_t kGetCutsceneEventRVA = 0x6D4CB8;
 
+constexpr uintptr_t kManagerGlobalRVA = 0xAC2428;
+constexpr size_t kManagerPersistentDataOffset = 0x204D0;
+constexpr uintptr_t kPersistentDataUnlockedRVA = 0x7027F8;
+constexpr int32_t kAchievementTheVoid = 320;
+
 struct Vector2f {
     float x;
     float y;
@@ -47,6 +52,7 @@ typedef void* (*GetDefaultDesc_t)();
 typedef bool (*SpawnGridEntity_t)(void *room, int32_t gridIndex, int32_t type, int32_t varIdx, void *desc, int32_t varData);
 typedef void* (*GameSpawn_t)(void *game, int32_t type, int32_t variant, const Vector2f *pos, const Vector2f *velocity, void *spawner, int32_t subType, uint32_t seed);
 typedef void* (*GetCutsceneEvent_t)(void *game, int32_t eventId, int32_t subId);
+typedef bool (*PersistentDataUnlocked_t)(void *persistentData, int32_t achievementId);
 
 static NSString *UUIDForHeader(const mach_header_64 *header) {
     if (!header || header->magic != MH_MAGIC_64) return @"";
@@ -110,6 +116,7 @@ static int32_t g_guaranteedPortalGridIdx = -1;
 static uint32_t g_chestDropDelayTicks = 0;
 constexpr uint32_t kChestDropDelayTicks = 8; // ~1.2s delay (8 * 0.15s ticks) matching chest drop landing
 static bool g_spawnedGuaranteedPortal = false;
+static bool g_loggedLockedVoid = false;
 
 static bool HasVoidPortal(uintptr_t roomAddr, uintptr_t base, int32_t *outGridIdx = nullptr) {
     if (!roomAddr || !base) return false;
@@ -138,7 +145,7 @@ static bool HasVoidPortal(uintptr_t roomAddr, uintptr_t base, int32_t *outGridId
 }
 
 static void RemoveDuplicateVoidPortals(uintptr_t roomAddr, uintptr_t base, int32_t keepGridIdx) {
-    if (!roomAddr || !base || keepGridIdx < 0) return;
+    if (!roomAddr || !base) return;
     uintptr_t trapDoorVTable = base + kTrapDoorVTableRVA;
     uintptr_t gridEntitiesAddr = roomAddr + kRoomGridEntitiesOffset;
 
@@ -146,7 +153,7 @@ static void RemoveDuplicateVoidPortals(uintptr_t roomAddr, uintptr_t base, int32
     if (!SafeReadBytes(gridEntitiesAddr, gridEntities, sizeof(gridEntities))) return;
 
     for (size_t i = 0; i < kRoomGridEntityCount; ++i) {
-        if (static_cast<int32_t>(i) == keepGridIdx) continue;
+        if (keepGridIdx >= 0 && static_cast<int32_t>(i) == keepGridIdx) continue;
         uintptr_t entPtr = gridEntities[i];
         if (!entPtr) continue;
 
@@ -164,7 +171,7 @@ static void RemoveDuplicateVoidPortals(uintptr_t roomAddr, uintptr_t base, int32
                 }
                 uintptr_t zero = 0;
                 SafeWrite(gridEntitiesAddr + i * sizeof(uintptr_t), zero);
-                RepPlusLog(@"Removed duplicate Void Portal at tile %zu (kept tile: %d)", i, keepGridIdx);
+                RepPlusLog(@"Removed Void Portal at tile %zu (kept tile: %d)", i, keepGridIdx);
             }
         }
     }
@@ -198,6 +205,31 @@ static void SuppressMegaSatanCutscene(uintptr_t gameAddr, uintptr_t base) {
             g_suppressedCutsceneEvent = reinterpret_cast<uintptr_t>(event);
             RepPlusLog(@"Suppressed automatic Mega Satan Ending 16 cutscene with valid dummy object (ptr: 0x%lx)", dummyPtr);
         }
+    }
+}
+
+static bool IsVoidUnlocked(uintptr_t base) {
+    if (!base) return false;
+    uintptr_t managerPtrAddr = base + kManagerGlobalRVA;
+    uintptr_t manager = 0;
+    if (!SafeRead(managerPtrAddr, manager) || !manager) return false;
+
+    uintptr_t persistentData = manager + kManagerPersistentDataOffset;
+
+    // 1. Direct memory check:
+    // Achievement array in PersistentGameData starts at offset 0x28.
+    // Index 320 is at persistentData + 0x28 + 320 = persistentData + 0x168.
+    uint8_t unlockedByte = 0;
+    if (SafeRead(persistentData + 0x28 + kAchievementTheVoid, unlockedByte) && unlockedByte != 0) {
+        return true;
+    }
+
+    // 2. Query native engine function (handles special unlock flags / debug):
+    PersistentDataUnlocked_t Unlocked = reinterpret_cast<PersistentDataUnlocked_t>(base + kPersistentDataUnlockedRVA);
+    @try {
+        return Unlocked(reinterpret_cast<void *>(persistentData), kAchievementTheVoid);
+    } @catch (...) {
+        return false;
     }
 }
 
@@ -332,6 +364,7 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
         g_guaranteedPortalGridIdx = -1;
         g_chestDropDelayTicks = 0;
         g_spawnedGuaranteedPortal = false;
+        g_loggedLockedVoid = false;
     }
 
     int32_t stage = 0;
@@ -393,6 +426,17 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
     // Suppress Ending 16 cutscene immediately once victory is confirmed
     if (g_isMegaSatanRoom && g_megaSatanDefeated) {
         SuppressMegaSatanCutscene(gameAddr, base);
+    }
+
+    // Check if The Void is unlocked on the save file (Achievement 320: "New Area" from defeating Hush)
+    if (!IsVoidUnlocked(base)) {
+        if (!g_loggedLockedVoid) {
+            RepPlusLog(@"Void Portal spawn skipped: The Void is locked on this save file (Secret 320: New Area)");
+            g_loggedLockedVoid = true;
+        }
+        // Ensure no void portals spawn or remain if The Void is locked
+        RemoveDuplicateVoidPortals(roomAddr, base, -1);
+        return;
     }
 
     // If Void Portal already exists in the room (natural 50% spawn or previous guaranteed spawn):
