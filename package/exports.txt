@@ -2,3 +2,5 @@ _RepPlusStart
 _RepPlusGetBaseAddress
 _RepPlusIsSupportedBuild
 _RepPlusVoidWatchdogTick
+_RepPlusApplyItemBalancePatches
+_RepPlusPlayerBalanceTick

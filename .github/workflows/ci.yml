@@ -44,18 +44,20 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.15
-          name: "Isaac Repentance+ iOS v1.0.15 (Pure Data-Only / Jailed LiveContainer Fix)"
+          tag_name: v1.0.16
+          name: "Isaac Repentance+ iOS v1.0.16 (Restored Rep+ Item Balance & Seraphim Transformation)"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.15)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.16)
 
-            ### What's Fixed in v1.0.15:
-            - **Mega Satan Cutscene Suppression & Duplicate Chest Fix**:
-              - Suppresses the automatic Ending 16 cutscene without crashing using native controller data (`room + 0x8DEC = -1`) and valid cutscene dummy object.
-              - Eliminates duplicate Big Chest in Mega Satan's room (only one Big Chest drops).
-            - **100% Pure Data-Only Architecture**: All writes to executable `__TEXT` code pages eliminated to ensure zero codesigning crashes on non-jailbroken iOS / LiveContainer.
-            - **Guaranteed Void Portals**: 100% guaranteed Void Portals after Mega Satan, Mother (Corpse II), The Lamb (Dark Room), and ??? / Blue Baby (Chest).
-            - **Save File Void Unlock Check**: The Void portal will only spawn if The Void has been unlocked on the save file (Secret #320: "New Area", unlocked by defeating Hush for the first time).
+            ### What's Fixed in v1.0.16:
+            - **Restored Authentic Rep+ Item Balance**:
+              - **Revelation (ID 643)**: Gives 0 soul hearts upon pickup (authentic Rep+ nerf).
+              - **Mega Bean (ID 351)**: Reworked to 6 max charges.
+              - **2Spooky (ID 554)**: Upgraded to Quality 2.
+            - **Restored Seraphim Transformation Progression (ID 390)**:
+              - Familiar Seraphim (390) dynamically increments the Seraphim transformation counter in memory (3/3 grants holy flight).
+              - Fully synchronized with EID live transformation tracking.
+            - **100% Retained Guaranteed Void Portals & Mega Satan Cutscene Suppression**.
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
