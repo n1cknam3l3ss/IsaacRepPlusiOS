@@ -44,20 +44,21 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.16
-          name: "Isaac Repentance+ iOS v1.0.16 (Restored Rep+ Item Balance & Seraphim Transformation)"
+          tag_name: v1.0.17
+          name: "Isaac Repentance+ iOS v1.0.17 (Fixed Mega Satan Ending 16 Cutscene & Retained Void Unlocks)"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.16)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.17)
 
-            ### What's Fixed in v1.0.16:
-            - **Restored Authentic Rep+ Item Balance**:
-              - **Revelation (ID 643)**: Gives 0 soul hearts upon pickup (authentic Rep+ nerf).
-              - **Mega Bean (ID 351)**: Reworked to 6 max charges.
-              - **2Spooky (ID 554)**: Upgraded to Quality 2.
-            - **Restored Seraphim Transformation Progression (ID 390)**:
-              - Familiar Seraphim (390) dynamically increments the Seraphim transformation counter in memory (3/3 grants holy flight).
-              - Fully synchronized with EID live transformation tracking.
-            - **100% Retained Guaranteed Void Portals & Mega Satan Cutscene Suppression**.
+            ### What's Fixed in v1.0.17:
+            - **4-Layer Engine Cutscene Suppression for Mega Satan Ending 16**:
+              - Layer 1 (`g_Game + 0x1CF406 |= 1`): Sets engine Void portal flag so Mega Satan death routine (`0x1005026e4`) bypasses cutscene timer initiation.
+              - Layer 2 (`g_Game + 0x2A5930 = 0`): Resets 89-frame countdown timer in `Game::Update` before `StartCutsceneSequence` triggers.
+              - Layer 3 (`g_Game + 0x25C00 = 0`): Cancels active cutscene sequence state if initiated.
+              - Layer 4 (`g_Manager + 0x1F6D08 = 0`): Intercepts queued Ending 16 in Manager while keeping deliberate Big Chest endings intact (`pickup + 0x5b4 >= 1`).
+            - **Strict Save-File Void Unlock Integrity**:
+              - Retained Hush defeat check (Achievement/Secret 320: "New Area"). If Void is locked, no portal spawns and vanilla cutscene behaviors are left unmodified.
+            - **Item Balance & Transformation Support**:
+              - Revelation (ID 643) 0 soul hearts, Mega Bean (ID 351) 6 max charges, 2Spooky (ID 554) Quality 2, Seraphim (ID 390) transformation increment.
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:

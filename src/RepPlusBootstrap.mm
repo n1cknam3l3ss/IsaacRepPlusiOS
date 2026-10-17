@@ -27,7 +27,7 @@ static void RepPlusTryInit(void) {
         g_retryTimer = nil;
     }
 
-    RepPlusLog(@"Initializing IsaacRepPlusiOS tweak v1.0.16 (base: 0x%lx)", (unsigned long)base);
+    RepPlusLog(@"Initializing IsaacRepPlusiOS tweak v1.0.17 (base: 0x%lx)", (unsigned long)base);
 
     // Run one-time initialization
     RepPlusVoidPatchInit(base);
@@ -44,7 +44,7 @@ static void RepPlusTryInit(void) {
     }];
     [[NSRunLoop mainRunLoop] addTimer:g_watchdogTimer forMode:NSRunLoopCommonModes];
 
-    RepPlusLog(@"IsaacRepPlusiOS v1.0.16 active! Guaranteed Void portals & Rep+ balance running.");
+    RepPlusLog(@"IsaacRepPlusiOS v1.0.17 active! Guaranteed Void portals & Rep+ balance running.");
 }
 
 void RepPlusStart(void) {
