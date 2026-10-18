@@ -27,16 +27,16 @@ static void RepPlusTryInit(void) {
         g_retryTimer = nil;
     }
 
-    RepPlusLog(@"Initializing IsaacRepPlusiOS tweak v1.0.17 (base: 0x%lx)", (unsigned long)base);
+    RepPlusLog(@"Initializing IsaacRepPlusiOS tweak v1.0.18 (base: 0x%lx)", (unsigned long)base);
 
     // Run one-time initialization
     RepPlusVoidPatchInit(base);
     RepPlusApplyItemBalancePatches();
 
-    // Start repeating timer for guaranteed Void portal and balance tracking
-    g_watchdogTimer = [NSTimer scheduledTimerWithTimeInterval:0.15
-                                                      repeats:YES
-                                                        block:^(NSTimer * _Nonnull timer) {
+    // Start repeating timer for guaranteed Void portal and balance tracking (30ms / ~30Hz)
+    g_watchdogTimer = [NSTimer timerWithTimeInterval:0.03
+                                             repeats:YES
+                                               block:^(NSTimer * _Nonnull timer) {
         @autoreleasepool {
             RepPlusVoidWatchdogTick();
             RepPlusPlayerBalanceTick();
@@ -44,7 +44,7 @@ static void RepPlusTryInit(void) {
     }];
     [[NSRunLoop mainRunLoop] addTimer:g_watchdogTimer forMode:NSRunLoopCommonModes];
 
-    RepPlusLog(@"IsaacRepPlusiOS v1.0.17 active! Guaranteed Void portals & Rep+ balance running.");
+    RepPlusLog(@"IsaacRepPlusiOS v1.0.18 active! Guaranteed Void portals & Rep+ balance running.");
 }
 
 void RepPlusStart(void) {

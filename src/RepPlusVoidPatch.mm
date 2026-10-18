@@ -50,8 +50,12 @@ constexpr uintptr_t kGameSpawnEntityRVA = 0x88FCBC;
 
 constexpr uintptr_t kManagerGlobalRVA = 0xAC2428;
 constexpr size_t kManagerPersistentDataOffset = 0x204D0;
+constexpr size_t kManagerGameStateOffset = 0x204C0;
 constexpr size_t kManagerQueuedCutsceneValidOffset = 0x1F6D08;
 constexpr size_t kManagerQueuedCutsceneIdOffset = 0x1F6D0C;
+constexpr size_t kManagerImmediateCutsceneIdOffset = 0x1F6D20;
+constexpr size_t kManagerSecondaryCutsceneValidOffset = 0x1F6CEC;
+constexpr size_t kManagerSecondaryCutsceneIdOffset = 0x1F6CF0;
 constexpr uintptr_t kPersistentDataUnlockedRVA = 0x7027F8;
 constexpr int32_t kAchievementTheVoid = 320;
 
@@ -127,7 +131,7 @@ static bool g_isMotherRoom = false;
 static bool g_seenMotherPhase2 = false;
 static int32_t g_guaranteedPortalGridIdx = -1;
 static uint32_t g_chestDropDelayTicks = 0;
-constexpr uint32_t kChestDropDelayTicks = 8; // ~1.2s delay (8 * 0.15s ticks) matching chest drop landing
+constexpr uint32_t kChestDropDelayTicks = 40; // ~1.2s delay (40 * 0.03s ticks) matching chest drop landing
 static bool g_spawnedGuaranteedPortal = false;
 static bool g_loggedLockedVoid = false;
 
@@ -195,6 +199,8 @@ void RepPlusVoidPatchInit(uintptr_t base) {
     RepPlusLog(@"RepPlusVoidPatch initialized in pure data-only mode (base: 0x%lx)", (unsigned long)base);
 }
 
+static bool g_loggedVoidStatus = false;
+
 static bool IsVoidUnlocked(uintptr_t base) {
     if (!base) return false;
     uintptr_t managerPtrAddr = base + kManagerGlobalRVA;
@@ -207,17 +213,25 @@ static bool IsVoidUnlocked(uintptr_t base) {
     // Achievement array in PersistentGameData starts at offset 0x28.
     // Index 320 is at persistentData + 0x28 + 320 = persistentData + 0x168.
     uint8_t unlockedByte = 0;
-    if (SafeRead(persistentData + 0x28 + kAchievementTheVoid, unlockedByte) && unlockedByte != 0) {
-        return true;
-    }
+    bool directMatch = (SafeRead(persistentData + 0x28 + kAchievementTheVoid, unlockedByte) && unlockedByte != 0);
 
     // 2. Query native engine function (handles special unlock flags / debug):
+    bool nativeMatch = false;
     PersistentDataUnlocked_t Unlocked = reinterpret_cast<PersistentDataUnlocked_t>(base + kPersistentDataUnlockedRVA);
     @try {
-        return Unlocked(reinterpret_cast<void *>(persistentData), kAchievementTheVoid);
+        nativeMatch = Unlocked(reinterpret_cast<void *>(persistentData), kAchievementTheVoid);
     } @catch (...) {
-        return false;
+        nativeMatch = false;
     }
+
+    bool result = directMatch || nativeMatch;
+
+    if (!g_loggedVoidStatus) {
+        RepPlusLog(@"The Void unlock check (Secret 320): %d (direct: %d [byte: %d], native: %d)",
+                   (int)result, (int)directMatch, (int)unlockedByte, (int)nativeMatch);
+        g_loggedVoidStatus = true;
+    }
+    return result;
 }
 
 static int32_t SpawnVoidPortal(void *room, uintptr_t base) {
@@ -244,22 +258,7 @@ static int32_t SpawnVoidPortal(void *room, uintptr_t base) {
 static void SuppressMegaSatanCutsceneTimers(uintptr_t gameAddr, uintptr_t base, bool chestTouched) {
     if (!gameAddr || !base) return;
 
-    // 1. Set engine VoidPortalSpawned bit flag (game + 0x1CF406 |= 1).
-    // Native function 0x1006d8c34 reads (game + 0x1CF406) & 1.
-    // When bit 0 is set, the death handler (0x1005026e4) skips calling 0x100896ed8,
-    // so the 89-frame countdown timer is never even started.
-    uint8_t voidSpawned = 0;
-    if (SafeRead(gameAddr + kGameVoidSpawnedFlagOffset, voidSpawned)) {
-        if ((voidSpawned & 1) == 0) {
-            voidSpawned |= 1;
-            SafeWrite(gameAddr + kGameVoidSpawnedFlagOffset, voidSpawned);
-            RepPlusLog(@"Set game + 0x1CF406 |= 1 (engine Void portal flag for Mega Satan room)");
-        }
-    }
-
-    // 2. Clear the 89-frame countdown timer (game + 0x2A5930 = 0).
-    // In Game::Update (0x10088e27c), if game + 0x2A5930 >= 1, it increments to 89
-    // and launches Game::StartCutsceneSequence(1, 5, 0).
+    // 1. Reset the 89-frame countdown timer (game + 0x2A5930 = 0).
     int32_t msTimer = 0;
     if (SafeRead(gameAddr + kGameMegaSatanTimerOffset, msTimer) && msTimer > 0) {
         int32_t zero = 0;
@@ -267,7 +266,7 @@ static void SuppressMegaSatanCutsceneTimers(uintptr_t gameAddr, uintptr_t base, 
         RepPlusLog(@"Reset Mega Satan cutscene countdown timer (was %d)", msTimer);
     }
 
-    // 3. If player has NOT deliberately opened/touched the chest, abort cutscene sequence & manager queue:
+    // 2. Abort CutsceneSequence and Manager cutscene triggers if player did NOT deliberately enter Big Chest:
     if (!chestTouched) {
         int32_t seqState = 0;
         if (SafeRead(gameAddr + kGameCutsceneSeqStateOffset, seqState) && seqState > 0) {
@@ -278,14 +277,42 @@ static void SuppressMegaSatanCutsceneTimers(uintptr_t gameAddr, uintptr_t base, 
 
         uintptr_t manager = 0;
         if (SafeRead(base + kManagerGlobalRVA, manager) && manager) {
+            // Check 0x1F6D08 / 0x1F6D0C (queued cutscene)
             uint8_t queuedValid = 0;
             int32_t queuedId = 0;
             if (SafeRead(manager + kManagerQueuedCutsceneValidOffset, queuedValid) && queuedValid != 0) {
                 if (SafeRead(manager + kManagerQueuedCutsceneIdOffset, queuedId) && queuedId == 16) {
                     uint8_t zero = 0;
                     SafeWrite(manager + kManagerQueuedCutsceneValidOffset, zero);
-                    RepPlusLog(@"Intercepted and cancelled queued Ending 16 cutscene in Manager!");
+                    RepPlusLog(@"Cancelled queued Ending 16 cutscene in Manager (0x1F6D08)!");
                 }
+            }
+
+            // Check 0x1F6D20 (immediate cutscene ID set by Game::Update)
+            int32_t cutscene20 = 0;
+            if (SafeRead(manager + kManagerImmediateCutsceneIdOffset, cutscene20) && cutscene20 == 16) {
+                int32_t zero = 0;
+                SafeWrite(manager + kManagerImmediateCutsceneIdOffset, zero);
+                RepPlusLog(@"Cancelled immediate Ending 16 cutscene in Manager (0x1F6D20)!");
+            }
+
+            // Check 0x1F6CEC / 0x1F6CF0 (secondary queued cutscene)
+            uint8_t cecValid = 0;
+            int32_t cecId = 0;
+            if (SafeRead(manager + kManagerSecondaryCutsceneValidOffset, cecValid) && cecValid != 0) {
+                if (SafeRead(manager + kManagerSecondaryCutsceneIdOffset, cecId) && cecId == 16) {
+                    uint8_t zero = 0;
+                    SafeWrite(manager + kManagerSecondaryCutsceneValidOffset, zero);
+                    RepPlusLog(@"Cancelled secondary Ending 16 cutscene in Manager (0x1F6CEC)!");
+                }
+            }
+
+            // If manager state was forced to 3 (Cutscene) or 5, restore to 1 (Gameplay)
+            int32_t managerState = 0;
+            if (SafeRead(manager + kManagerGameStateOffset, managerState) && (managerState == 3 || managerState == 5)) {
+                int32_t gameplayState = 1;
+                SafeWrite(manager + kManagerGameStateOffset, gameplayState);
+                RepPlusLog(@"Restored Manager state from %d to 1 (Gameplay)!", managerState);
             }
         }
     }
@@ -402,40 +429,47 @@ static void CheckAndSpawnVoidPortal(uintptr_t gameAddr, uintptr_t roomAddr, uint
         g_chestDropDelayTicks = 0;
         g_spawnedGuaranteedPortal = false;
         g_loggedLockedVoid = false;
+        g_loggedVoidStatus = false;
     }
 
     int32_t stage = 0;
     int32_t stageType = 0;
-    if (!SafeRead(gameAddr + 0x0, stage)) return;
-    if (!SafeRead(gameAddr + 0x4, stageType)) return;
+    SafeRead(gameAddr + 0x0, stage);
+    SafeRead(gameAddr + 0x4, stageType);
 
-    // Eligible boss battles:
-    // 1. Mother: Stage 8, StageType 4 (Corpse II)
-    // 2. Chest (Blue Baby / Mega Satan): Stage 10
-    // 3. Dark Room (The Lamb / Mega Satan): Stage 11
-    bool eligibleStage = false;
-    if (stage == 8 && stageType == 4) {
-        eligibleStage = true;
-    } else if (stage == 10 || stage == 11) {
-        eligibleStage = true;
-    }
-    if (!eligibleStage) return;
-
-    // Room descriptor check for Mega Satan room layout:
-    // RoomType 5 (Boss) and Variant 89 (0x59) in Stage 10/11
+    // Native room checks matching engine 0x1005a9154:
+    // roomType is at roomAddr + 0x10 (5 = RoomType_Boss)
     int32_t roomType = 0;
+    SafeRead(roomAddr + 0x10, roomType);
+
+    // roomVariant is at roomData + 0x10 (89 = 0x59 = Mega Satan)
     int32_t roomVariant = 0;
     uintptr_t descriptor = 0;
     if (SafeRead(roomAddr + kRoomDescriptorOffset, descriptor) && descriptor) {
         uintptr_t roomData = 0;
         if (SafeRead(descriptor + kRoomDescriptorDataOffset, roomData) && roomData) {
-            SafeRead(roomData + kRoomConfigTypeOffset, roomType);
             SafeRead(roomData + kRoomConfigVariantOffset, roomVariant);
         }
     }
-    if ((stage == 10 || stage == 11) && roomType == 5 && roomVariant == 89) {
+
+    if (roomType == 5 && roomVariant == 89) {
         g_isMegaSatanRoom = true;
     }
+
+    // Eligible boss battles:
+    // 1. Mother: Stage 8, StageType 4 (Corpse II)
+    // 2. Chest (Blue Baby / Mega Satan): Stage 10
+    // 3. Dark Room (The Lamb / Mega Satan): Stage 11
+    // 4. Any room identified as Mega Satan
+    bool eligibleStage = false;
+    if (stage == 8 && stageType == 4) {
+        eligibleStage = true;
+    } else if (stage == 10 || stage == 11) {
+        eligibleStage = true;
+    } else if (g_isMegaSatanRoom) {
+        eligibleStage = true;
+    }
+    if (!eligibleStage) return;
 
     // Do not spawn Void Portals in Challenges or Daily runs
     int32_t challengeId = 0;

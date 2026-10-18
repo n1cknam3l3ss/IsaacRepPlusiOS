@@ -44,21 +44,26 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.17
-          name: "Isaac Repentance+ iOS v1.0.17 (Fixed Mega Satan Ending 16 Cutscene & Retained Void Unlocks)"
+          tag_name: v1.0.18
+          name: "Isaac Repentance+ iOS v1.0.18 (Accurate Mega Satan Room Detection & 5-Point Cutscene Interception)"
           body: |
-            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.17)
+            ## The Binding of Isaac: Repentance+ iOS Standalone Port (v1.0.18)
 
-            ### What's Fixed in v1.0.17:
-            - **4-Layer Engine Cutscene Suppression for Mega Satan Ending 16**:
-              - Layer 1 (`g_Game + 0x1CF406 |= 1`): Sets engine Void portal flag so Mega Satan death routine (`0x1005026e4`) bypasses cutscene timer initiation.
-              - Layer 2 (`g_Game + 0x2A5930 = 0`): Resets 89-frame countdown timer in `Game::Update` before `StartCutsceneSequence` triggers.
-              - Layer 3 (`g_Game + 0x25C00 = 0`): Cancels active cutscene sequence state if initiated.
-              - Layer 4 (`g_Manager + 0x1F6D08 = 0`): Intercepts queued Ending 16 in Manager while keeping deliberate Big Chest endings intact (`pickup + 0x5b4 >= 1`).
-            - **Strict Save-File Void Unlock Integrity**:
-              - Retained Hush defeat check (Achievement/Secret 320: "New Area"). If Void is locked, no portal spawns and vanilla cutscene behaviors are left unmodified.
-            - **Item Balance & Transformation Support**:
-              - Revelation (ID 643) 0 soul hearts, Mega Bean (ID 351) 6 max charges, 2Spooky (ID 554) Quality 2, Seraphim (ID 390) transformation increment.
+            ### What's Fixed in v1.0.18:
+            - **Accurate Mega Satan Room Detection**:
+              - Corrected native `roomType` offset to `roomAddr + 0x10 == 5` (matching engine `0x1005a9154`) and `roomVariant` to `roomData + 0x10 == 89`.
+              - Removed restrictive stage checks so Mega Satan's room is recognized reliably regardless of stage state.
+            - **Comprehensive 5-Point Cutscene Suppression**:
+              - Point 1: Constantly zeroes the 89-frame countdown timer in `g_Game + 0x2A5930`.
+              - Point 2: Aborts `CutsceneSequence` object in `g_Game + 0x25C00`.
+              - Point 3: Intercepts Manager immediate cutscene trigger `0x1F6D20` written by `Game::Update`.
+              - Point 4: Intercepts Manager queued cutscenes `0x1F6D08` / `0x1F6D0C` and `0x1F6CEC` / `0x1F6CF0`.
+              - Point 5: Restores Manager game state `0x204C0` back to 1 (Gameplay) if flipped to 3/5.
+            - **High-Frequency 30ms Watchdog**:
+              - Watchdog timer upgraded to 30ms (~33Hz) and added to `NSRunLoopCommonModes` for zero-frame drop interception.
+            - **100% Preserved Void Unlock & Intentional Big Chest Completion**:
+              - Player can still enter the Big Chest (`pickup + 0x5b4 >= 1`) to end the run with Ending 16 intentionally.
+              - Void unlock check (Secret 320) intact with enhanced diagnostic logging.
 
             ### Installation:
             - **Jailbreak (Dopamine / Sileo / ElleKit)**:
